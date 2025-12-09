@@ -39,7 +39,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     currencySymbol: '$',
     lowStockThreshold: 28,
     staffMembers: ['Admin'],
-    commissionRate: 5
+    commissionRate: 5,
+    appPin: '' // Default to no PIN
   });
 
   // Load from LocalStorage
@@ -88,7 +89,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setSettings({
             ...parsedSettings,
             staffMembers: parsedSettings.staffMembers || ['Admin'],
-            commissionRate: parsedSettings.commissionRate || 5
+            commissionRate: parsedSettings.commissionRate || 5,
+            appPin: parsedSettings.appPin || ''
         });
     }
   }, []);

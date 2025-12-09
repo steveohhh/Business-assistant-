@@ -8,8 +8,9 @@ import Analytics from './components/Analytics';
 import Ledger from './components/Ledger';
 import Settings from './components/Settings';
 import ProfitPlanner from './components/ProfitPlanner';
+import LockScreen from './components/LockScreen';
 import { generateDailyBriefing } from './services/geminiService';
-import { LayoutDashboard, Package, ShoppingCart, Users, PieChart, FileText, Settings as SettingsIcon, Crosshair, X, CheckCircle, AlertTriangle, Info, TrendingUp, DollarSign, Activity, Zap, RefreshCw } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingCart, Users, PieChart, FileText, Settings as SettingsIcon, Crosshair, X, CheckCircle, AlertTriangle, Info, TrendingUp, DollarSign, Activity, Zap, RefreshCw, ShieldAlert } from 'lucide-react';
 
 // --- TOAST COMPONENT ---
 const ToastContainer = () => {
@@ -80,6 +81,9 @@ const Dashboard = ({ onNavigate }: { onNavigate: (v: ViewState) => void }) => {
                     <p className="text-gray-400 text-sm font-mono mt-1">System Online • {new Date().toLocaleDateString()}</p>
                 </div>
                 <div className="flex gap-2">
+                    <button onClick={() => onNavigate('SETTINGS')} className="bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10 hover:text-white px-3 py-2 rounded-lg font-bold transition-all" title="Settings">
+                        <SettingsIcon size={20} />
+                    </button>
                     <button onClick={handleGetBriefing} className="bg-cyber-purple/20 border border-cyber-purple text-cyber-purple hover:bg-cyber-purple hover:text-white px-4 py-2 rounded-lg font-bold text-xs uppercase flex items-center gap-2 transition-all">
                         {loadingBriefing ? <RefreshCw className="animate-spin" size={14}/> : <Zap size={14}/>}
                         {briefing ? "Refresh Briefing" : "AI Briefing"}
@@ -194,7 +198,24 @@ const Dashboard = ({ onNavigate }: { onNavigate: (v: ViewState) => void }) => {
 
 const AppContent: React.FC = () => {
   const [view, setView] = useState<ViewState>('DASHBOARD');
-  const { batches, customers, sales, addBatch, deleteBatch, addCustomer, updateCustomer, processSale } = useData();
+  const { batches, customers, sales, addBatch, deleteBatch, addCustomer, updateCustomer, processSale, settings, addNotification } = useData();
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // Auth Logic
+  useEffect(() => {
+    // If no PIN is set, auto-authenticate
+    if (!settings.appPin || settings.appPin === '') {
+        setIsAuthenticated(true);
+        // Only warn once per session if not warned
+        const hasWarned = sessionStorage.getItem('pin_warned');
+        if (!hasWarned) {
+             addNotification("System Unsecured. Set PIN in Settings.", "WARNING");
+             sessionStorage.setItem('pin_warned', 'true');
+        }
+    } else {
+        setIsAuthenticated(false);
+    }
+  }, [settings.appPin]);
 
   const renderView = () => {
     switch (view) {
@@ -229,6 +250,15 @@ const AppContent: React.FC = () => {
       {view === v && <div className="absolute inset-0 bg-white/20 animate-pulse-slow pointer-events-none"></div>}
     </button>
   );
+
+  if (!isAuthenticated && settings.appPin) {
+      return (
+          <LockScreen 
+            correctPin={settings.appPin} 
+            onUnlock={() => setIsAuthenticated(true)} 
+          />
+      );
+  }
 
   return (
     <div className="flex h-screen bg-[#050505] overflow-hidden font-sans selection:bg-cyber-gold selection:text-black">
@@ -272,7 +302,7 @@ const AppContent: React.FC = () => {
         <NavItem v="POS" icon={ShoppingCart} label="POS" />
         <NavItem v="STOCK" icon={Package} label="Stock" />
         <NavItem v="CUSTOMERS" icon={Users} label="CRM" />
-        <NavItem v="PLANNER" icon={Crosshair} label="Plan" />
+        <NavItem v="SETTINGS" icon={SettingsIcon} label="Config" />
       </nav>
     </div>
   );

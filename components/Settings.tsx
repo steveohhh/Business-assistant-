@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useData } from '../DataContext';
-import { Settings as SettingsIcon, Save, Users, Plus, X, Download, Smartphone, Trash2, Monitor } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Users, Plus, X, Download, Smartphone, Trash2, Monitor, Lock, ShieldCheck } from 'lucide-react';
 
 const Settings: React.FC = () => {
   const { settings, updateSettings, addNotification } = useData();
@@ -8,17 +8,17 @@ const Settings: React.FC = () => {
   const [saved, setSaved] = useState(false);
   const [newStaff, setNewStaff] = useState('');
   
+  // PIN Management
+  const [pinInput, setPinInput] = useState(settings.appPin || '');
+  
   // PWA Install State
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstallable, setIsInstallable] = useState(false);
 
   useEffect(() => {
     const handler = (e: any) => {
-      // Prevent the mini-infobar from appearing on mobile
       e.preventDefault();
-      // Stash the event so it can be triggered later.
       setDeferredPrompt(e);
-      // Update UI notify the user they can install the PWA
       setIsInstallable(true);
     };
     window.addEventListener('beforeinstallprompt', handler);
@@ -30,9 +30,7 @@ const Settings: React.FC = () => {
         addNotification("Installation not supported or already installed.", 'INFO');
         return;
     }
-    // Show the install prompt
     deferredPrompt.prompt();
-    // Wait for the user to respond to the prompt
     const { outcome } = await deferredPrompt.userChoice;
     if (outcome === 'accepted') {
         addNotification("Installing Application...", 'SUCCESS');
@@ -43,7 +41,14 @@ const Settings: React.FC = () => {
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    updateSettings(form);
+    
+    // Validate PIN (must be 4 digits or empty)
+    if (pinInput && !/^\d{4}$/.test(pinInput)) {
+        addNotification("PIN must be exactly 4 digits.", "ERROR");
+        return;
+    }
+
+    updateSettings({ ...form, appPin: pinInput });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -69,48 +74,76 @@ const Settings: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           
           {/* GENERAL SETTINGS */}
-          <form onSubmit={handleSave} className="bg-cyber-panel border border-white/10 rounded-2xl p-8 space-y-6 h-fit">
-            <h3 className="text-white font-bold uppercase text-sm border-b border-white/10 pb-4">Core Economics</h3>
+          <form onSubmit={handleSave} className="space-y-8">
             
-            <div className="space-y-2">
-                <label className="text-gray-400 font-bold uppercase text-xs tracking-wider">Default Price Per Gram ($)</label>
-                <input 
-                    type="number" step="0.01"
-                    value={form.defaultPricePerGram}
-                    onChange={e => setForm({...form, defaultPricePerGram: parseFloat(e.target.value) || 0})}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-xl font-mono text-cyber-green focus:border-cyber-green outline-none"
-                />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
+            {/* ECONOMICS PANEL */}
+            <div className="bg-cyber-panel border border-white/10 rounded-2xl p-8 space-y-6">
+                <h3 className="text-white font-bold uppercase text-sm border-b border-white/10 pb-4">Core Economics</h3>
+                
                 <div className="space-y-2">
-                    <label className="text-gray-400 font-bold uppercase text-xs tracking-wider">Currency</label>
+                    <label className="text-gray-400 font-bold uppercase text-xs tracking-wider">Default Price Per Gram ($)</label>
                     <input 
-                        type="text"
-                        value={form.currencySymbol}
-                        onChange={e => setForm({...form, currencySymbol: e.target.value})}
-                        className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-cyber-gold outline-none"
+                        type="number" step="0.01"
+                        value={form.defaultPricePerGram}
+                        onChange={e => setForm({...form, defaultPricePerGram: parseFloat(e.target.value) || 0})}
+                        className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-xl font-mono text-cyber-green focus:border-cyber-green outline-none"
                     />
                 </div>
-                <div className="space-y-2">
-                    <label className="text-gray-400 font-bold uppercase text-xs tracking-wider">Low Stock (g)</label>
-                    <input 
-                        type="number"
-                        value={form.lowStockThreshold}
-                        onChange={e => setForm({...form, lowStockThreshold: parseFloat(e.target.value) || 0})}
-                        className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-cyber-gold outline-none"
-                    />
+
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <label className="text-gray-400 font-bold uppercase text-xs tracking-wider">Currency</label>
+                        <input 
+                            type="text"
+                            value={form.currencySymbol}
+                            onChange={e => setForm({...form, currencySymbol: e.target.value})}
+                            className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-cyber-gold outline-none"
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-gray-400 font-bold uppercase text-xs tracking-wider">Low Stock (g)</label>
+                        <input 
+                            type="number"
+                            value={form.lowStockThreshold}
+                            onChange={e => setForm({...form, lowStockThreshold: parseFloat(e.target.value) || 0})}
+                            className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-cyber-gold outline-none"
+                        />
+                    </div>
                 </div>
             </div>
 
-            <div className="pt-4">
-                <button 
-                    type="submit"
-                    className={`w-full py-4 rounded-xl font-bold uppercase tracking-widest transition-all shadow-lg ${saved ? 'bg-cyber-green text-black' : 'bg-white text-black hover:bg-gray-200'}`}
-                >
-                    {saved ? 'Configuration Saved' : 'Save Changes'}
-                </button>
+            {/* SECURITY PANEL */}
+            <div className="bg-cyber-panel border border-white/10 rounded-2xl p-8 space-y-6">
+                 <h3 className="text-white font-bold uppercase text-sm border-b border-white/10 pb-4 flex items-center gap-2">
+                    <ShieldCheck size={16} className="text-cyber-gold"/> Security Protocols
+                 </h3>
+                 
+                 <div className="space-y-2">
+                     <label className="text-gray-400 font-bold uppercase text-xs tracking-wider">App Access PIN (4 Digits)</label>
+                     <div className="relative">
+                        <Lock size={16} className="absolute left-4 top-4 text-gray-500"/>
+                        <input 
+                            type="text" 
+                            maxLength={4}
+                            placeholder="Set PIN (Leave empty to disable)"
+                            value={pinInput}
+                            onChange={e => {
+                                const val = e.target.value.replace(/[^0-9]/g, '');
+                                setPinInput(val);
+                            }}
+                            className="w-full bg-black/40 border border-white/10 rounded-xl p-4 pl-12 text-xl font-mono text-white tracking-[0.5em] focus:border-cyber-gold outline-none"
+                        />
+                     </div>
+                     <p className="text-[10px] text-gray-500">Leaving this field empty will disable the lock screen.</p>
+                 </div>
             </div>
+
+            <button 
+                type="submit"
+                className={`w-full py-4 rounded-xl font-bold uppercase tracking-widest transition-all shadow-lg ${saved ? 'bg-cyber-green text-black' : 'bg-white text-black hover:bg-gray-200'}`}
+            >
+                {saved ? 'Configuration Saved' : 'Save Changes'}
+            </button>
           </form>
 
           {/* RIGHT COLUMN: APP & STAFF */}

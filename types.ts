@@ -51,8 +51,9 @@ export interface AppSettings {
   defaultPricePerGram: number;
   currencySymbol: string;
   lowStockThreshold: number;
-  staffMembers: string[]; // New: List of active sales reps
-  commissionRate: number; // New: Percentage for staff (e.g., 5%)
+  staffMembers: string[]; 
+  commissionRate: number; 
+  appPin: string; // New: Security PIN (empty string means disabled)
 }
 
 export type ViewState = 'DASHBOARD' | 'STOCK' | 'POS' | 'CUSTOMERS' | 'ANALYTICS' | 'LEDGER' | 'SETTINGS' | 'PLANNER';
