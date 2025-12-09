@@ -1,12 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useData } from '../DataContext';
-import { Settings as SettingsIcon, Save, Users, Plus, X, Download, Smartphone, Trash2, Monitor, Lock, ShieldCheck } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Users, Plus, X, Download, Smartphone, Trash2, Monitor, Lock, ShieldCheck, Database, Upload, FileJson } from 'lucide-react';
+import { BackupData } from '../types';
 
 const Settings: React.FC = () => {
-  const { settings, updateSettings, addNotification } = useData();
+  const { settings, updateSettings, addNotification, batches, customers, sales, operationalExpenses, loadBackup } = useData();
   const [form, setForm] = useState(settings);
   const [saved, setSaved] = useState(false);
   const [newStaff, setNewStaff] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // PIN Management
   const [pinInput, setPinInput] = useState(settings.appPin || '');
@@ -63,6 +65,61 @@ const Settings: React.FC = () => {
 
   const removeStaff = (name: string) => {
       setForm({ ...form, staffMembers: form.staffMembers.filter(s => s !== name) });
+  };
+
+  const handleExportBackup = () => {
+      const backup: BackupData = {
+          version: "2.5.0",
+          timestamp: new Date().toISOString(),
+          batches,
+          customers,
+          sales,
+          operationalExpenses,
+          settings
+      };
+
+      const dataStr = JSON.stringify(backup, null, 2);
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `SMP_BACKUP_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      addNotification("Backup file generated.", "SUCCESS");
+  };
+
+  const handleImportClick = () => {
+      fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+          try {
+              const json = JSON.parse(event.target?.result as string);
+              // Basic validation
+              if (!json.version || !json.timestamp) {
+                  throw new Error("Invalid backup format");
+              }
+              
+              if (window.confirm(`Restore backup from ${new Date(json.timestamp).toLocaleDateString()}? Current data will be overwritten.`)) {
+                   loadBackup(json);
+              }
+          } catch (err) {
+              console.error(err);
+              addNotification("Failed to parse backup file.", "ERROR");
+          }
+      };
+      reader.readAsText(file);
+      // Reset input
+      e.target.value = '';
   };
 
   return (
@@ -149,6 +206,44 @@ const Settings: React.FC = () => {
           {/* RIGHT COLUMN: APP & STAFF */}
           <div className="space-y-8">
               
+              {/* DATA MANAGEMENT */}
+              <div className="bg-cyber-panel border border-white/10 rounded-2xl p-8 space-y-6">
+                  <h3 className="text-white font-bold uppercase text-sm border-b border-white/10 pb-4 flex items-center gap-2">
+                      <Database size={16}/> Data Persistence
+                  </h3>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                      <button 
+                        onClick={handleExportBackup}
+                        className="bg-white/5 border border-white/10 hover:bg-white/10 hover:border-cyber-gold p-4 rounded-xl flex flex-col items-center gap-2 transition-all group"
+                      >
+                          <Download size={24} className="text-cyber-gold group-hover:scale-110 transition-transform" />
+                          <span className="text-xs font-bold uppercase text-white">Backup Data</span>
+                          <span className="text-[9px] text-gray-500 text-center">Save .json to device</span>
+                      </button>
+
+                      <button 
+                        onClick={handleImportClick}
+                        className="bg-white/5 border border-white/10 hover:bg-white/10 hover:border-cyber-purple p-4 rounded-xl flex flex-col items-center gap-2 transition-all group"
+                      >
+                          <Upload size={24} className="text-cyber-purple group-hover:scale-110 transition-transform" />
+                          <span className="text-xs font-bold uppercase text-white">Restore Data</span>
+                          <span className="text-[9px] text-gray-500 text-center">Load .json from device</span>
+                      </button>
+                      <input 
+                        type="file" 
+                        accept=".json" 
+                        ref={fileInputRef} 
+                        onChange={handleFileChange}
+                        className="hidden" 
+                      />
+                  </div>
+                  <p className="text-[10px] text-gray-600 bg-black/20 p-2 rounded border border-white/5 flex gap-2">
+                      <FileJson size={14} />
+                      Warning: Clearing browser history may delete local data. Use "Backup Data" regularly to prevent loss.
+                  </p>
+              </div>
+
               {/* STAFF MANAGEMENT */}
               <div className="bg-cyber-panel border border-white/10 rounded-2xl p-8 space-y-6">
                    <h3 className="text-white font-bold uppercase text-sm border-b border-white/10 pb-4 flex items-center gap-2"><Users size={16}/> Staff & Commissions</h3>

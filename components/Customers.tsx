@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Customer, AssessmentData } from '../types';
+import { Customer, AssessmentData, MicroSignal } from '../types';
 import { analyzeCustomerProfile, generateAvatar } from '../services/geminiService';
 import { useData } from '../DataContext';
 import { 
     User, Sparkles, X, Activity, Shield, Heart, DollarSign, 
-    Edit3, Save, Brain, FileText, BarChart2, AlertTriangle, Zap, Target, Lock, Eye, Clock, TrendingUp, ChevronRight, ChevronLeft, Camera, RefreshCw
+    Edit3, Save, Brain, FileText, BarChart2, AlertTriangle, Zap, Target, Lock, Eye, Clock, TrendingUp, ChevronRight, ChevronLeft, Camera, RefreshCw, Radio, PlusCircle
 } from 'lucide-react';
 import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Legend } from 'recharts';
 
@@ -18,6 +18,69 @@ const BEHAVIOR_TAGS = [
     "Haggles", "Big Spender", "Impulsive", "Chatty", "Rude", 
     "Knows Product", "Quick/Rush", "Gift Buyer", "Ask for Discount", "Cash Only"
 ];
+
+// --- MICRO-SIGNAL LOGGER ---
+const MicroSignalLogger = ({ customer, onAddSignal, onScanHistory }: { customer: Customer, onAddSignal: (s: MicroSignal) => void, onScanHistory: () => void }) => {
+    
+    const quickSignals = [
+        { label: "Price Sensitive", cat: 'VERBAL', event: "Complained about price", intensity: 4 },
+        { label: "Rushed", cat: 'NON_VERBAL', event: "Checked watch/phone freq", intensity: 3 },
+        { label: "Chatty", cat: 'VERBAL', event: "Extended small talk", intensity: 2 },
+        { label: "Quality Focus", cat: 'VERBAL', event: "Asked technical questions", intensity: 4 },
+        { label: "Indecisive", cat: 'NON_VERBAL', event: "Hesitated > 5 mins", intensity: 3 },
+        { label: "Cash Heavy", cat: 'TRANSACTIONAL', event: "Paid large bills", intensity: 3 },
+    ];
+
+    return (
+        <div className="bg-cyber-panel border border-white/10 rounded-2xl p-6 mb-6">
+            <h3 className="text-white font-bold uppercase text-sm mb-4 flex items-center gap-2"><Radio size={16} className="text-cyber-green animate-pulse"/> Signal Intelligence</h3>
+            
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
+                {quickSignals.map((s, i) => (
+                    <button 
+                        key={i}
+                        onClick={() => onAddSignal({
+                            id: Date.now().toString() + i,
+                            timestamp: new Date().toISOString(),
+                            category: s.cat as any,
+                            event: s.event,
+                            intensity: s.intensity
+                        })}
+                        className="bg-white/5 hover:bg-cyber-gold hover:text-black border border-white/10 rounded-lg p-2 text-[10px] font-bold uppercase transition-all flex flex-col items-center gap-1"
+                    >
+                        <span>{s.label}</span>
+                    </button>
+                ))}
+            </div>
+
+            <div className="flex justify-between items-center mb-2 border-t border-white/5 pt-4">
+                <span className="text-xs text-gray-500 uppercase font-bold">Signal Log ({customer.microSignals?.length || 0})</span>
+                <button onClick={onScanHistory} className="text-[10px] text-cyber-purple hover:text-white flex items-center gap-1">
+                    <RefreshCw size={10} /> Scan Sales History
+                </button>
+            </div>
+
+            <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
+                {customer.microSignals && customer.microSignals.slice().reverse().map(signal => (
+                    <div key={signal.id} className="flex justify-between items-center bg-black/40 p-2 rounded border border-white/5">
+                        <div>
+                            <div className="text-xs text-white font-bold">{signal.event}</div>
+                            <div className="text-[9px] text-gray-500">{new Date(signal.timestamp).toLocaleDateString()} • {signal.category}</div>
+                        </div>
+                        <div className="flex gap-0.5">
+                            {[...Array(5)].map((_, i) => (
+                                <div key={i} className={`w-1 h-3 rounded-full ${i < signal.intensity ? 'bg-cyber-green' : 'bg-gray-800'}`}></div>
+                            ))}
+                        </div>
+                    </div>
+                ))}
+                {(!customer.microSignals || customer.microSignals.length === 0) && (
+                    <div className="text-center text-gray-600 text-[10px] italic py-2">No behavioral signals recorded. Tap above to log.</div>
+                )}
+            </div>
+        </div>
+    );
+};
 
 // --- 10-POINT BEHAVIORAL INTERROGATION ---
 const AssessmentForm = ({ data, onChange }: { data: AssessmentData, onChange: (d: AssessmentData) => void }) => {
@@ -171,7 +234,7 @@ const LTVSimulator = ({ customer }: { customer: Customer }) => {
                     value={discountSim} 
                     onChange={e => setDiscountSim(parseInt(e.target.value))}
                     className="w-full accent-cyber-gold h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer mb-4"
-                 />
+                  />
                  
                  <div className="flex justify-between items-center">
                      <div>
@@ -321,6 +384,7 @@ const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onUpdat
       name: newName,
       notes: '',
       tags: [],
+      microSignals: [],
       totalSpent: 0,
       lastPurchase: new Date().toISOString(),
       transactionHistory: []
@@ -348,7 +412,13 @@ const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onUpdat
     setIsAnalyzing(true);
     addNotification("Accessing psychology mainframe...", 'INFO');
     
-    const customerToAnalyze = { ...selectedCustomer, assessmentData: assessmentForm, notes: editNotes };
+    // Ensure we include micro-signals in the analysis payload
+    const customerToAnalyze = { 
+        ...selectedCustomer, 
+        assessmentData: assessmentForm, 
+        notes: editNotes,
+        microSignals: selectedCustomer.microSignals || []
+    };
     const profile = await analyzeCustomerProfile(customerToAnalyze, selectedCustomer.transactionHistory);
     setIsAnalyzing(false);
     
@@ -391,6 +461,58 @@ const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onUpdat
     const updated = { ...selectedCustomer, tags: newTags };
     onUpdateCustomer(updated);
     setSelectedCustomer(updated);
+  };
+
+  const handleAddSignal = (signal: MicroSignal) => {
+      if (!selectedCustomer) return;
+      const updatedSignals = [...(selectedCustomer.microSignals || []), signal];
+      const updated = { ...selectedCustomer, microSignals: updatedSignals };
+      onUpdateCustomer(updated);
+      setSelectedCustomer(updated);
+      addNotification("Behavioral signal recorded.", 'SUCCESS');
+  };
+
+  const handleScanHistory = () => {
+      if (!selectedCustomer) return;
+      
+      const newSignals: MicroSignal[] = [];
+      const tx = selectedCustomer.transactionHistory;
+      
+      // Whale Check
+      if (tx.some(t => t.amount > 200)) {
+          newSignals.push({ id: Date.now() + '1', timestamp: new Date().toISOString(), category: 'TRANSACTIONAL', event: "High Value Purchase (>$200)", intensity: 5 });
+      }
+      
+      // Frequency Check
+      if (tx.length > 5) {
+          const first = new Date(tx[0].timestamp).getTime();
+          const last = new Date(tx[tx.length - 1].timestamp).getTime();
+          const days = (last - first) / (1000 * 3600 * 24);
+          if (days < 30) {
+               newSignals.push({ id: Date.now() + '2', timestamp: new Date().toISOString(), category: 'TRANSACTIONAL', event: "High Frequency Buyer", intensity: 4 });
+          }
+      }
+
+      // Profit Check (if margin is low repeatedly)
+      if (tx.length > 0) {
+          const lowMarginTx = tx.filter(t => (t.profit / t.amount) < 0.2);
+          if (lowMarginTx.length >= 2) {
+              newSignals.push({ id: Date.now() + '3', timestamp: new Date().toISOString(), category: 'TRANSACTIONAL', event: "Low Margin / Negotiator", intensity: 4 });
+          }
+      }
+
+      // Dedupe based on event name to avoid spamming same signal on multiple clicks
+      const existingEvents = new Set((selectedCustomer.microSignals || []).map(s => s.event));
+      const uniqueNewSignals = newSignals.filter(s => !existingEvents.has(s.event));
+
+      if (uniqueNewSignals.length > 0) {
+          const updated = { ...selectedCustomer, microSignals: [...(selectedCustomer.microSignals || []), ...uniqueNewSignals] };
+          onUpdateCustomer(updated);
+          setSelectedCustomer(updated);
+          addNotification(`Identified ${uniqueNewSignals.length} new signals from sales data.`, 'SUCCESS');
+      } else {
+          addNotification("No new patterns found in transaction history.", 'INFO');
+      }
   };
 
   const getTierColor = (spent: number) => {
@@ -509,6 +631,13 @@ const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onUpdat
                             <button onClick={saveAssessment} className="text-xs flex items-center gap-1 text-cyber-green hover:text-white bg-white/5 px-3 py-1 rounded-full"><Save size={12} /> Save Changes</button>
                         </div>
                         
+                        {/* NEW: MICRO-SIGNAL LOGGER */}
+                        <MicroSignalLogger 
+                            customer={selectedCustomer} 
+                            onAddSignal={handleAddSignal} 
+                            onScanHistory={handleScanHistory}
+                        />
+
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                             <div className="space-y-2">
                                 <label className="text-xs text-gray-400 uppercase font-bold">Quick Observations</label>

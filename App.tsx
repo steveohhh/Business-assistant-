@@ -201,7 +201,7 @@ const AppContent: React.FC = () => {
   const { batches, customers, sales, addBatch, deleteBatch, addCustomer, updateCustomer, processSale, settings, addNotification } = useData();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  // Auth Logic
+  // Auth Logic - Initial Check
   useEffect(() => {
     // If no PIN is set, auto-authenticate
     if (!settings.appPin || settings.appPin === '') {
@@ -215,6 +215,20 @@ const AppContent: React.FC = () => {
     } else {
         setIsAuthenticated(false);
     }
+  }, [settings.appPin]);
+
+  // Auth Logic - Visibility Change (Auto Lock on Background)
+  useEffect(() => {
+      const handleVisibilityChange = () => {
+          if (document.visibilityState === 'hidden' && settings.appPin && settings.appPin !== '') {
+              setIsAuthenticated(false);
+          }
+      };
+
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      return () => {
+          document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
   }, [settings.appPin]);
 
   const renderView = () => {

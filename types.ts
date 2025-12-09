@@ -60,6 +60,14 @@ export type ViewState = 'DASHBOARD' | 'STOCK' | 'POS' | 'CUSTOMERS' | 'ANALYTICS
 
 // --- PSYCHOLOGY ENGINE V3.0 TYPES ---
 
+export interface MicroSignal {
+    id: string;
+    timestamp: string;
+    category: 'VERBAL' | 'NON_VERBAL' | 'TRANSACTIONAL' | 'DIGITAL';
+    event: string; // e.g. "Asked about purity", "Checked watch freq", "Paid in large bills"
+    intensity: number; // 1 (Low) to 5 (High)
+}
+
 export interface AssessmentData {
     // The 10-Point Behavioral Interrogation
     defaultBehavior: string;
@@ -145,6 +153,7 @@ export interface Customer {
   visualDescription?: string; // New: For AI Image Gen
   avatarImage?: string; // New: Base64 Image
   tags: string[]; 
+  microSignals: MicroSignal[]; // New: Granular behavioral tracking
   assessmentData?: AssessmentData;
   psychProfile?: ArchetypeProfile; 
   totalSpent: number;
@@ -163,4 +172,14 @@ export interface Notification {
   id: string;
   message: string;
   type: 'SUCCESS' | 'ERROR' | 'INFO' | 'WARNING';
+}
+
+export interface BackupData {
+    version: string;
+    timestamp: string;
+    batches: Batch[];
+    customers: Customer[];
+    sales: Sale[];
+    operationalExpenses: OperationalExpense[];
+    settings: AppSettings;
 }

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Batch, Customer, Sale, AppSettings, BatchExpense, StagedTransaction, Notification, OperationalExpense } from './types';
+import { Batch, Customer, Sale, AppSettings, BatchExpense, StagedTransaction, Notification, OperationalExpense, BackupData } from './types';
 
 interface DataContextType {
   batches: Batch[];
@@ -21,6 +21,7 @@ interface DataContextType {
   stageTransaction: (tx: StagedTransaction | null) => void;
   addNotification: (message: string, type?: 'SUCCESS' | 'ERROR' | 'INFO' | 'WARNING') => void;
   removeNotification: (id: string) => void;
+  loadBackup: (data: BackupData) => void;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -69,7 +70,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         ...c,
         tags: c.tags || [],
         visualDescription: c.visualDescription || '',
-        avatarImage: c.avatarImage || ''
+        avatarImage: c.avatarImage || '',
+        microSignals: c.microSignals || [] // Migration for MicroSignals
       }));
       setCustomers(migratedCustomers);
     }
@@ -216,8 +218,23 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     addNotification("Transaction executed successfully.", 'SUCCESS');
   };
 
+  const loadBackup = (data: BackupData) => {
+      try {
+          if (data.batches) setBatches(data.batches);
+          if (data.customers) setCustomers(data.customers);
+          if (data.sales) setSales(data.sales);
+          if (data.operationalExpenses) setOperationalExpenses(data.operationalExpenses);
+          if (data.settings) setSettings(data.settings);
+          
+          addNotification("Database restored successfully.", "SUCCESS");
+      } catch (e) {
+          console.error("Backup load error", e);
+          addNotification("Corrupt backup file.", "ERROR");
+      }
+  };
+
   return (
-    <DataContext.Provider value={{ batches, customers, sales, operationalExpenses, settings, stagedTransaction, notifications, addBatch, updateBatch, deleteBatch, addCustomer, updateCustomer, processSale, addOperationalExpense, deleteOperationalExpense, updateSettings, stageTransaction, addNotification, removeNotification }}>
+    <DataContext.Provider value={{ batches, customers, sales, operationalExpenses, settings, stagedTransaction, notifications, addBatch, updateBatch, deleteBatch, addCustomer, updateCustomer, processSale, addOperationalExpense, deleteOperationalExpense, updateSettings, stageTransaction, addNotification, removeNotification, loadBackup }}>
       {children}
     </DataContext.Provider>
   );

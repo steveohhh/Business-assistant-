@@ -42,18 +42,30 @@ export const analyzeCustomerProfile = async (
   const assessment = customer.assessmentData ? JSON.stringify(customer.assessmentData) : "No formal assessment.";
   const historySummary = `Transactions: ${history.length}, Total Spent: $${customer.totalSpent}, Last Purchase: ${customer.lastPurchase}`;
 
+  // Process Micro-Signals
+  const microSignalsLog = customer.microSignals 
+      ? customer.microSignals
+          .slice(-20) // Take last 20
+          .map(s => `[${s.category}] ${s.event} (Intensity: ${s.intensity})`)
+          .join("; ")
+      : "No observable micro-signals recorded.";
+
   const prompt = `
     ACT AS THE ARCHETYPE ENGINE V3.0.
-    Analyze this subject based on the 10-point behavioral interrogation and transaction history.
+    Analyze this subject based on the 10-point behavioral interrogation, transaction history, and OBSERVED MICRO-SIGNALS.
 
     SUBJECT DATA:
     Name: ${customer.name}
     History: ${historySummary}
     Behavioral Interrogation: ${assessment}
     Notes: ${customer.notes}
+    
+    *** CRITICAL: MICRO-SIGNALS LOG ***
+    ${microSignalsLog}
+    ***********************************
 
     ALGORITHM INSTRUCTIONS:
-    1. EXTRACT BEHAVIOURAL FEATURES.
+    1. EXTRACT BEHAVIOURAL FEATURES from both the Assessment AND the Micro-Signals.
     2. MAP TO ARCHETYPES (Controller, Analyst, Reactor, Drifter, Optimiser, Validator, Challenger, Minimalist, Opportunist, Navigator).
     3. GENERATE TACTICAL HUD DATA (Short, 1-3 words for HUD display).
     4. PREDICT LIFECYCLE METRICS.
