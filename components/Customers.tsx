@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Customer, AssessmentData, SituationalEncounter } from '../types';
+import { Customer, AssessmentData, SituationalEncounter, MicroSignal } from '../types';
 import { analyzeCustomerProfile, generateAvatar } from '../services/geminiService';
 import { useData } from '../DataContext';
 import { 
     User, Sparkles, X, Activity, Shield, DollarSign, 
     Save, Brain, FileText, Zap, Target, Eye, Clock, Camera, RefreshCw, BookOpen, Layers, Hexagon,
-    AlertTriangle, MessageCircle, Gavel, Flame, Anchor, Lock, ChevronRight, HelpCircle
+    AlertTriangle, MessageCircle, Gavel, Flame, Anchor, Lock, ChevronRight, HelpCircle, Radio, Mic, CreditCard, Smile
 } from 'lucide-react';
 import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
 
@@ -63,6 +63,13 @@ const ARCHETYPES = {
     'C': { label: 'The Sentinel', color: 'text-cyber-green', bg: 'bg-cyber-green', desc: "Security-driven. Values guarantees, safety, and routine.", statBonus: { patience: 90, risk: 10 } }
 };
 
+// --- SIGNAL PRESETS ---
+const SIGNAL_PRESETS = {
+    VERBAL: ["Asked about Price", "Asked about Quality", "Mentioned Competitor", "Joked/Friendly", "Silent/Brief", "Complained", "Expert Lingo", "Swore/Angry"],
+    NON_VERBAL: ["Checking Phone", "Eye Contact", "Pacing", "Relaxed Posture", "Rushed/Impatient", "Fidgeting", "Nodding", "Arms Crossed"],
+    TRANSACTIONAL: ["Paid Exact Cash", "Haggled", "Bought Upsell", "Declined Upsell", "Large Bills", "Asked for Credit", "Small Bills", "Tipped"]
+};
+
 // --- RPG STAT COMPONENT ---
 const StatHex = ({ label, value, color }: { label: string, value: number, color: string }) => (
     <div className="flex flex-col items-center">
@@ -74,6 +81,110 @@ const StatHex = ({ label, value, color }: { label: string, value: number, color:
         <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">{label}</span>
     </div>
 );
+
+// --- MICRO SIGNAL LOGGER COMPONENT ---
+const MicroSignalInput = ({ customer, onAddSignal }: { customer: Customer, onAddSignal: (s: MicroSignal) => void }) => {
+    const [category, setCategory] = useState<'VERBAL' | 'NON_VERBAL' | 'TRANSACTIONAL'>('VERBAL');
+    const [intensity, setIntensity] = useState(5);
+    const [customSignal, setCustomSignal] = useState('');
+
+    const handleQuickAdd = (event: string) => {
+        onAddSignal({
+            id: Date.now().toString(),
+            timestamp: new Date().toISOString(),
+            category,
+            event,
+            intensity
+        });
+    };
+
+    const handleCustomAdd = () => {
+        if (!customSignal) return;
+        handleQuickAdd(customSignal);
+        setCustomSignal('');
+    };
+
+    return (
+        <div className="bg-cyber-panel border border-white/10 rounded-2xl p-6 mb-6">
+            <h3 className="text-white font-bold uppercase text-sm mb-4 flex items-center gap-2">
+                <Radio size={16} className="text-cyber-green animate-pulse" /> Behavioral Telemetry
+            </h3>
+
+            {/* Category Tabs */}
+            <div className="flex gap-2 mb-4 bg-black/40 p-1 rounded-lg">
+                <button onClick={() => setCategory('VERBAL')} className={`flex-1 py-2 rounded text-xs font-bold uppercase flex items-center justify-center gap-2 ${category === 'VERBAL' ? 'bg-cyber-purple text-white shadow-lg shadow-cyber-purple/20' : 'text-gray-500 hover:text-white'}`}>
+                    <Mic size={14}/> Verbal
+                </button>
+                <button onClick={() => setCategory('NON_VERBAL')} className={`flex-1 py-2 rounded text-xs font-bold uppercase flex items-center justify-center gap-2 ${category === 'NON_VERBAL' ? 'bg-cyber-gold text-black shadow-lg shadow-cyber-gold/20' : 'text-gray-500 hover:text-white'}`}>
+                    <Smile size={14}/> Non-Verbal
+                </button>
+                <button onClick={() => setCategory('TRANSACTIONAL')} className={`flex-1 py-2 rounded text-xs font-bold uppercase flex items-center justify-center gap-2 ${category === 'TRANSACTIONAL' ? 'bg-cyber-green text-black shadow-lg shadow-cyber-green/20' : 'text-gray-500 hover:text-white'}`}>
+                    <CreditCard size={14}/> Action
+                </button>
+            </div>
+
+            {/* Intensity Slider */}
+            <div className="mb-4 px-2">
+                <div className="flex justify-between text-[10px] text-gray-500 uppercase font-bold mb-1">
+                    <span>Subtle</span>
+                    <span className="text-white">Signal Intensity: {intensity}</span>
+                    <span>Extreme</span>
+                </div>
+                <input 
+                    type="range" min="1" max="10" 
+                    value={intensity} onChange={(e) => setIntensity(parseInt(e.target.value))}
+                    className={`w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer ${
+                        category === 'VERBAL' ? 'accent-cyber-purple' : category === 'NON_VERBAL' ? 'accent-cyber-gold' : 'accent-cyber-green'
+                    }`}
+                />
+            </div>
+
+            {/* Presets Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+                {SIGNAL_PRESETS[category].map((preset) => (
+                    <button 
+                        key={preset}
+                        onClick={() => handleQuickAdd(preset)}
+                        className="bg-white/5 hover:bg-white/10 border border-white/5 rounded p-2 text-[10px] text-gray-300 hover:text-white text-left truncate transition-all active:scale-95"
+                    >
+                        {preset}
+                    </button>
+                ))}
+            </div>
+
+            {/* Custom Input */}
+            <div className="flex gap-2">
+                <input 
+                    value={customSignal}
+                    onChange={(e) => setCustomSignal(e.target.value)}
+                    placeholder="Custom observation..."
+                    className="flex-1 bg-black/40 border border-white/10 rounded p-2 text-xs text-white outline-none focus:border-white/30"
+                />
+                <button onClick={handleCustomAdd} className="bg-white/10 hover:bg-white/20 px-3 rounded text-white text-xs font-bold uppercase">
+                    Log
+                </button>
+            </div>
+
+            {/* Recent Signals Feed */}
+            {customer.microSignals && customer.microSignals.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-white/10">
+                    <p className="text-[10px] text-gray-500 uppercase font-bold mb-2">Recent Signals</p>
+                    <div className="flex flex-wrap gap-2">
+                        {customer.microSignals.slice(-5).reverse().map((s) => (
+                            <div key={s.id} className="bg-black/40 border border-white/5 rounded px-2 py-1 flex items-center gap-2">
+                                <div className={`w-1.5 h-1.5 rounded-full ${
+                                    s.category === 'VERBAL' ? 'bg-cyber-purple' : s.category === 'NON_VERBAL' ? 'bg-cyber-gold' : 'bg-cyber-green'
+                                }`}></div>
+                                <span className="text-[10px] text-gray-300">{s.event}</span>
+                                <span className="text-[9px] text-gray-600 font-mono">Lvl {s.intensity}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
 
 // --- SITUATIONAL ENCOUNTER LOGGER ---
 const EncounterLogger = ({ customer, onAddEncounter }: { customer: Customer, onAddEncounter: (e: SituationalEncounter) => void }) => {
@@ -201,6 +312,27 @@ const HeroCustomerCard: React.FC<{ customer: Customer, onClick: () => void }> = 
         negotiation: 50, intellect: 50, patience: 50, volatility: 50, loyalty: 50, riskPerception: 50
     };
 
+    // Calculate Loyalty Tier & Progress
+    const totalSpent = customer.totalSpent;
+    let tier = 'Silver';
+    let nextTier = 'Gold';
+    let progress = 0;
+    
+    if (totalSpent >= 1000) {
+        tier = 'Platinum';
+        nextTier = 'MAX';
+        progress = 100;
+    } else if (totalSpent >= 500) {
+        tier = 'Gold';
+        nextTier = 'Platinum';
+        progress = ((totalSpent - 500) / 500) * 100;
+    } else {
+        progress = (totalSpent / 500) * 100;
+    }
+
+    const tierColor = tier === 'Platinum' ? 'text-cyan-400' : tier === 'Gold' ? 'text-cyber-gold' : 'text-gray-400';
+    const barColor = tier === 'Platinum' ? 'bg-cyan-400' : tier === 'Gold' ? 'bg-cyber-gold' : 'bg-gray-500';
+
     return (
         <div onClick={onClick} className="bg-cyber-panel border border-white/10 rounded-2xl overflow-hidden cursor-pointer group hover:border-cyber-gold transition-all relative shadow-xl h-full flex flex-col">
             
@@ -216,11 +348,11 @@ const HeroCustomerCard: React.FC<{ customer: Customer, onClick: () => void }> = 
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent"></div>
                 
                 <div className="absolute bottom-4 left-4 right-4">
-                    <div className="flex justify-between items-end">
+                    <div className="flex justify-between items-end mb-2">
                         <div>
                             <h3 className="text-3xl font-black text-white uppercase tracking-tighter drop-shadow-lg leading-none">{customer.name}</h3>
-                            <span className="text-cyber-gold font-bold text-[10px] uppercase tracking-widest drop-shadow-md">
-                                Level {Math.floor(customer.totalSpent / 500) + 1} {customer.psychProfile?.primary || 'UNRANKED'}
+                            <span className={`${tierColor} font-bold text-[10px] uppercase tracking-widest drop-shadow-md`}>
+                                {tier} Tier {customer.psychProfile?.primary ? `• ${customer.psychProfile.primary}` : ''}
                             </span>
                         </div>
                         {customer.psychProfile && (
@@ -229,6 +361,19 @@ const HeroCustomerCard: React.FC<{ customer: Customer, onClick: () => void }> = 
                             </div>
                         )}
                     </div>
+
+                    {/* XP / LOYALTY PROGRESS BAR */}
+                    {tier !== 'Platinum' && (
+                        <div className="w-full">
+                            <div className="flex justify-between text-[9px] uppercase font-bold text-gray-400 mb-1">
+                                <span>{tier}</span>
+                                <span>To {nextTier}</span>
+                            </div>
+                            <div className="h-1.5 w-full bg-gray-800 rounded-full overflow-hidden">
+                                <div className={`h-full ${barColor} shadow-[0_0_10px_rgba(255,255,255,0.3)] transition-all duration-700`} style={{ width: `${progress}%` }}></div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -405,6 +550,15 @@ const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onUpdat
       addNotification("Encounter logged.", 'SUCCESS');
   }
 
+  const handleAddSignal = (signal: MicroSignal) => {
+      if (!selectedCustomer) return;
+      const updatedSignals = [...(selectedCustomer.microSignals || []), signal];
+      const updated = { ...selectedCustomer, microSignals: updatedSignals };
+      onUpdateCustomer(updated);
+      setSelectedCustomer(updated);
+      addNotification("Micro-signal recorded.", 'INFO');
+  }
+
   return (
     <div className="h-full flex flex-col">
       <div className="flex justify-between items-center mb-6">
@@ -478,6 +632,12 @@ const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onUpdat
                             <button onClick={saveAssessment} className="text-xs flex items-center gap-1 text-cyber-green hover:text-white bg-white/5 px-3 py-1 rounded-full"><Save size={12} /> Save Changes</button>
                         </div>
                         
+                        {/* MICRO SIGNAL INPUT */}
+                        <MicroSignalInput 
+                            customer={selectedCustomer}
+                            onAddSignal={handleAddSignal}
+                        />
+
                         {/* ENCOUNTER LOGGER */}
                         <EncounterLogger 
                             customer={selectedCustomer} 

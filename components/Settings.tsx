@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useData } from '../DataContext';
-import { Settings as SettingsIcon, Save, Users, Plus, X, Download, Smartphone, Trash2, Monitor, Lock, ShieldCheck, Database, Upload, FileJson, DollarSign, List, Package, AlertTriangle } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Users, Plus, X, Download, Smartphone, Trash2, Monitor, Lock, ShieldCheck, Database, Upload, FileJson, DollarSign, List, Package, AlertTriangle, Calculator, TrendingUp } from 'lucide-react';
 import { BackupData } from '../types';
 
 const Settings: React.FC = () => {
@@ -27,6 +27,10 @@ const Settings: React.FC = () => {
     window.addEventListener('beforeinstallprompt', handler);
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
+
+  // Calculate projected margin based on default values
+  const projectedMargin = form.defaultPricePerGram - form.defaultCostEstimate;
+  const projectedMarginPercent = form.defaultPricePerGram > 0 ? (projectedMargin / form.defaultPricePerGram) * 100 : 0;
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) {
@@ -147,55 +151,88 @@ const Settings: React.FC = () => {
           {/* LEFT COLUMN: OPERATIONAL SETTINGS */}
           <form onSubmit={handleSave} className="space-y-8">
             
-            {/* ECONOMICS PANEL */}
-            <div className="bg-cyber-panel border border-white/10 rounded-2xl p-8 space-y-6">
-                <h3 className="text-white font-bold uppercase text-sm border-b border-white/10 pb-4 flex items-center gap-2">
-                    <DollarSign size={16} className="text-cyber-green"/> Standard Economics
-                </h3>
-                
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                        <label className="text-gray-400 font-bold uppercase text-xs tracking-wider">Retail Price (/g)</label>
-                        <input 
-                            type="number" step="0.01"
-                            value={form.defaultPricePerGram}
-                            onChange={e => setForm({...form, defaultPricePerGram: parseFloat(e.target.value) || 0})}
-                            className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-cyber-green outline-none font-mono"
-                        />
-                    </div>
-                    <div className="space-y-2">
-                        <label className="text-gray-400 font-bold uppercase text-xs tracking-wider">Wholesale (/g)</label>
-                        <input 
-                            type="number" step="0.01"
-                            value={form.defaultWholesalePrice}
-                            onChange={e => setForm({...form, defaultWholesalePrice: parseFloat(e.target.value) || 0})}
-                            className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-cyber-gold outline-none font-mono"
-                        />
+            {/* ECONOMICS PANEL - REDESIGNED */}
+            <div className="bg-cyber-panel border border-white/10 rounded-2xl overflow-hidden">
+                <div className="p-6 border-b border-white/10 bg-white/5 flex justify-between items-center">
+                    <h3 className="text-white font-bold uppercase text-sm flex items-center gap-2">
+                        <DollarSign size={16} className="text-cyber-green"/> Financial Standards
+                    </h3>
+                    <div className="flex items-center gap-2 bg-black/40 px-3 py-1 rounded-lg border border-white/5">
+                        <span className="text-xs text-gray-400 font-bold uppercase">Base Margin</span>
+                        <span className={`text-sm font-mono font-bold ${projectedMarginPercent > 50 ? 'text-cyber-green' : 'text-cyber-gold'}`}>
+                            {projectedMarginPercent.toFixed(0)}%
+                        </span>
                     </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                        <label className="text-gray-400 font-bold uppercase text-xs tracking-wider">Cost Estimate (/g)</label>
-                        <input 
-                            type="number" step="0.01"
-                            value={form.defaultCostEstimate}
-                            onChange={e => setForm({...form, defaultCostEstimate: parseFloat(e.target.value) || 0})}
-                            className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-cyber-gold outline-none font-mono"
-                        />
+                <div className="p-8 space-y-6">
+                    {/* COST SECTION */}
+                    <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-cyber-gold font-bold text-xs uppercase tracking-wider">
+                            <TrendingUp size={12}/> Acquisition (Cost)
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                             <div className="space-y-2">
+                                <label className="text-gray-400 text-xs">Default Cost Estimate</label>
+                                <div className="relative">
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-mono">$</span>
+                                    <input 
+                                        type="number" step="0.01"
+                                        value={form.defaultCostEstimate}
+                                        onChange={e => setForm({...form, defaultCostEstimate: parseFloat(e.target.value) || 0})}
+                                        className="w-full bg-black/40 border border-white/10 rounded-xl p-3 pl-6 text-white focus:border-cyber-gold outline-none font-mono"
+                                    />
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-gray-400 text-xs">Currency Symbol</label>
+                                <input 
+                                    type="text" maxLength={3}
+                                    value={form.currencySymbol}
+                                    onChange={e => setForm({...form, currencySymbol: e.target.value})}
+                                    className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-cyber-gold outline-none font-mono text-center"
+                                />
+                            </div>
+                        </div>
+                        <p className="text-[10px] text-gray-600">Cost estimate is used as a fallback for profit calculations when batch acquisition data is missing.</p>
                     </div>
-                    <div className="space-y-2">
-                        <label className="text-gray-400 font-bold uppercase text-xs tracking-wider">Currency Symbol</label>
-                        <input 
-                            type="text" maxLength={3}
-                            value={form.currencySymbol}
-                            onChange={e => setForm({...form, currencySymbol: e.target.value})}
-                            className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-cyber-gold outline-none font-mono text-center"
-                            placeholder="$"
-                        />
+
+                    <div className="h-[1px] bg-white/5 w-full"></div>
+
+                    {/* PRICING SECTION */}
+                    <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-cyber-green font-bold text-xs uppercase tracking-wider">
+                            <DollarSign size={12}/> Resale Strategy (Price)
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <label className="text-gray-400 text-xs">Standard Retail Price</label>
+                                <div className="relative">
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-mono">$</span>
+                                    <input 
+                                        type="number" step="0.01"
+                                        value={form.defaultPricePerGram}
+                                        onChange={e => setForm({...form, defaultPricePerGram: parseFloat(e.target.value) || 0})}
+                                        className="w-full bg-black/40 border border-white/10 rounded-xl p-3 pl-6 text-white focus:border-cyber-green outline-none font-mono font-bold"
+                                    />
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-gray-400 text-xs">Wholesale / Bulk Price</label>
+                                <div className="relative">
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-mono">$</span>
+                                    <input 
+                                        type="number" step="0.01"
+                                        value={form.defaultWholesalePrice}
+                                        onChange={e => setForm({...form, defaultWholesalePrice: parseFloat(e.target.value) || 0})}
+                                        className="w-full bg-black/40 border border-white/10 rounded-xl p-3 pl-6 text-white focus:border-cyber-green outline-none font-mono"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                        <p className="text-[10px] text-gray-600">These values will auto-populate new inventory batches but can be overridden per batch.</p>
                     </div>
                 </div>
-                <p className="text-[10px] text-gray-500">Cost estimate is used for margin calc when batch cost is missing.</p>
             </div>
 
             {/* INVENTORY PROTOCOLS */}

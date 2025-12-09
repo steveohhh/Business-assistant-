@@ -174,13 +174,13 @@ export const generateBusinessIntelligence = async (
         ACT AS A PREDICTIVE RETAIL ANALYST.
         
         STOCK DATA: ${JSON.stringify(stockData)}
-        RECENT SALES LOG (30 DAYS): ${JSON.stringify(recentSales.map(s => ({ batch: s.batchName, weight: s.weight, amount: s.amount })))}
+        RECENT SALES LOG (30 DAYS): ${JSON.stringify(recentSales.map(s => ({ date: s.timestamp, batch: s.batchName, weight: s.weight, amount: s.amount })))}
 
         TASKS:
         1. Calculate burn rate for each batch.
         2. Predict stockout dates.
-        3. Forecast next 7 days revenue based on trends.
-        4. Suggest a specific customer archetype to target to maximize revenue.
+        3. Forecast next 7 days revenue (Day 1 to Day 7) based on trends/seasonality in the log.
+        4. Analyze which customer archetypes (Analyst, Maverick, Connector, Sentinel) are most likely to buy and estimate potential revenue from them.
 
         OUTPUT JSON ONLY:
         {
@@ -191,7 +191,13 @@ export const generateBusinessIntelligence = async (
                 "period": "Next 7 Days",
                 "predictedRevenue": number,
                 "predictedVolume": number,
-                "topArchetypeTarget": "string"
+                "topArchetypeTarget": "string",
+                "dailyTrend": [
+                    { "day": "DayName", "revenue": number }
+                ],
+                "archetypeBreakdown": [
+                    { "archetype": "string", "potentialRevenue": number }
+                ]
             }
         }
     `;

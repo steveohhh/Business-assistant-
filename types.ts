@@ -32,6 +32,7 @@ export interface Batch {
   currentStock: number;
   status: 'Active' | 'Low' | 'Sold Out';
   dateAdded: string;
+  notes?: string; // New: Qualitative data
 }
 
 export interface Sale {
@@ -159,11 +160,23 @@ export interface RestockPrediction {
     suggestedReorder: number;
 }
 
+export interface DailyPrediction {
+    day: string;
+    revenue: number;
+}
+
+export interface ArchetypePotential {
+    archetype: string;
+    potentialRevenue: number;
+}
+
 export interface SalesForecast {
     period: string; 
     predictedRevenue: number;
     predictedVolume: number;
     topArchetypeTarget: string; 
+    dailyTrend?: DailyPrediction[]; 
+    archetypeBreakdown?: ArchetypePotential[];
 }
 
 export interface BusinessIntelligence {

@@ -55,6 +55,21 @@
         overflow: hidden; 
         overscroll-behavior-y: none;
       }
+      
+      /* Cyberpunk Grid Background */
+      .cyber-grid-bg {
+        background-size: 40px 40px;
+        background-image:
+          linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
+        -webkit-mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
+        pointer-events: none;
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+      }
+
       /* Custom Scrollbar */
       ::-webkit-scrollbar {
         width: 6px;
@@ -72,13 +87,18 @@
       }
       
       .bg-cyber-panel {
-          background-color: rgba(18, 18, 18, 0.7);
-          backdrop-filter: blur(12px);
-          -webkit-backdrop-filter: blur(12px);
+          background-color: rgba(18, 18, 18, 0.85);
+          backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
       }
       
       .text-outline {
           text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+      }
+      
+      /* Utility for hiding scrollbar but allowing scroll */
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 4px;
       }
     </style>
   <script type="importmap">
@@ -98,6 +118,7 @@
 </head>
   <body>
     <div id="root"></div>
+    <div class="cyber-grid-bg"></div>
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>

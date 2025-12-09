@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Batch, Customer, Sale, AppSettings, BatchExpense, StagedTransaction, Notification, OperationalExpense, BackupData, POSState } from './types';
+import { Batch, Customer, Sale, AppSettings, BatchExpense, StagedTransaction, Notification, OperationalExpense, BackupData, POSState, BusinessIntelligence } from './types';
 
 interface DataContextType {
   batches: Batch[];
@@ -9,7 +9,11 @@ interface DataContextType {
   settings: AppSettings;
   stagedTransaction: StagedTransaction | null;
   notifications: Notification[];
-  posState: POSState; // Persistent POS state
+  posState: POSState; 
+  biData: BusinessIntelligence | null;
+  stealthMode: boolean; // New Privacy State
+  toggleStealthMode: () => void;
+  setBiData: (data: BusinessIntelligence | null) => void;
   updatePOSState: (state: Partial<POSState>) => void;
   addBatch: (batch: Batch) => void;
   updateBatch: (batch: Batch) => void;
@@ -35,6 +39,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [operationalExpenses, setOperationalExpenses] = useState<OperationalExpense[]>([]);
   const [stagedTransaction, setStagedTransaction] = useState<StagedTransaction | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [biData, setBiData] = useState<BusinessIntelligence | null>(null);
+  const [stealthMode, setStealthMode] = useState(false);
   
   // Default Settings
   const [settings, setSettings] = useState<AppSettings>({
@@ -67,6 +73,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const loadedSales = localStorage.getItem('smp_sales');
     const loadedOps = localStorage.getItem('smp_ops_expenses');
     const loadedSettings = localStorage.getItem('smp_settings');
+    const loadedBi = localStorage.getItem('smp_bi_data');
 
     if (loadedBatches) {
         // Migration logic
@@ -76,9 +83,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             strainType: (b.strainType === 'Indica' || b.strainType === 'Sativa' || b.strainType === 'Hybrid') ? 'Rock' : b.strainType, 
             expenses: b.expenses || [],
             personalUse: b.personalUse || 0,
-            loss: b.loss || 0, // New migration
+            loss: b.loss || 0,
             targetRetailPrice: b.targetRetailPrice || 0,
-            wholesalePrice: b.wholesalePrice || 0
+            wholesalePrice: b.wholesalePrice || 0,
+            notes: b.notes || '' // Ensure notes exist
         }));
         setBatches(migrated);
     }
@@ -90,7 +98,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         visualDescription: c.visualDescription || '',
         avatarImage: c.avatarImage || '',
         microSignals: c.microSignals || [],
-        encounters: c.encounters || [] // New migration
+        encounters: c.encounters || [] 
       }));
       setCustomers(migratedCustomers);
     }
@@ -104,6 +112,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
     if (loadedOps) {
         setOperationalExpenses(JSON.parse(loadedOps));
+    }
+    if (loadedBi) {
+        try {
+            setBiData(JSON.parse(loadedBi));
+        } catch(e) { console.error("BI Load Fail", e) }
     }
     if (loadedSettings) {
         const parsedSettings = JSON.parse(loadedSettings);
@@ -130,6 +143,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   useEffect(() => localStorage.setItem('smp_sales', JSON.stringify(sales)), [sales]);
   useEffect(() => localStorage.setItem('smp_ops_expenses', JSON.stringify(operationalExpenses)), [operationalExpenses]);
   useEffect(() => localStorage.setItem('smp_settings', JSON.stringify(settings)), [settings]);
+  useEffect(() => {
+      if (biData) localStorage.setItem('smp_bi_data', JSON.stringify(biData));
+  }, [biData]);
 
   // Notifications
   const addNotification = (message: string, type: 'SUCCESS' | 'ERROR' | 'INFO' | 'WARNING' = 'INFO') => {
@@ -140,6 +156,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const removeNotification = (id: string) => {
       setNotifications(prev => prev.filter(n => n.id !== id));
+  };
+
+  const toggleStealthMode = () => {
+      setStealthMode(prev => !prev);
+      if (!stealthMode) addNotification("Stealth Mode Active. Financials obscured.", 'INFO');
   };
 
   const recalculateBatchCost = (b: Batch): Batch => {
@@ -264,7 +285,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   return (
-    <DataContext.Provider value={{ batches, customers, sales, operationalExpenses, settings, stagedTransaction, notifications, posState, updatePOSState, addBatch, updateBatch, deleteBatch, addCustomer, updateCustomer, processSale, addOperationalExpense, deleteOperationalExpense, updateSettings, stageTransaction, addNotification, removeNotification, loadBackup }}>
+    <DataContext.Provider value={{ batches, customers, sales, operationalExpenses, settings, stagedTransaction, notifications, posState, biData, stealthMode, toggleStealthMode, setBiData, updatePOSState, addBatch, updateBatch, deleteBatch, addCustomer, updateCustomer, processSale, addOperationalExpense, deleteOperationalExpense, updateSettings, stageTransaction, addNotification, removeNotification, loadBackup }}>
       {children}
     </DataContext.Provider>
   );
