@@ -182,6 +182,7 @@ export interface Customer {
   microSignals: MicroSignal[];
   encounters?: SituationalEncounter[]; // New: Detailed situational logs 
   assessmentData?: AssessmentData;
+  behavioralMatrix?: Record<string, string>; // New: Stores QID -> AnswerValue mapping
   psychProfile?: ArchetypeProfile; 
   totalSpent: number;
   lastPurchase: string;
