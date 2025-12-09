@@ -8,7 +8,7 @@ interface LedgerProps {
 }
 
 const Ledger: React.FC<LedgerProps> = ({ sales }) => {
-  const { operationalExpenses, addOperationalExpense, deleteOperationalExpense } = useData();
+  const { operationalExpenses, addOperationalExpense, deleteOperationalExpense, settings } = useData();
   
   // Ledger State
   const [physicalCash, setPhysicalCash] = useState<string>('');
@@ -17,6 +17,7 @@ const Ledger: React.FC<LedgerProps> = ({ sales }) => {
   // Expense Form State
   const [expDesc, setExpDesc] = useState('');
   const [expAmount, setExpAmount] = useState('');
+  const [expCategory, setExpCategory] = useState(settings.expenseCategories[0] || 'Misc');
 
   // Filter for "Today"
   const todayStr = new Date().toDateString();
@@ -44,7 +45,7 @@ const Ledger: React.FC<LedgerProps> = ({ sales }) => {
           description: expDesc,
           amount: parseFloat(expAmount),
           timestamp: new Date().toISOString(),
-          category: 'PAYOUT'
+          category: expCategory
       };
       
       addOperationalExpense(newExp);
@@ -76,17 +77,30 @@ const Ledger: React.FC<LedgerProps> = ({ sales }) => {
                   
                   {/* Expense Form */}
                   <form onSubmit={handleAddExpense} className="bg-black/40 rounded-xl p-4 border border-white/5 mb-6">
-                      <div className="grid grid-cols-3 gap-3 mb-3">
-                          <div className="col-span-2">
+                      <div className="grid grid-cols-2 gap-3 mb-3">
+                          <div>
                               <label className="text-[10px] uppercase font-bold text-gray-500">Reason</label>
                               <input 
                                   value={expDesc}
                                   onChange={e => setExpDesc(e.target.value)}
-                                  placeholder="e.g. Gas, Lunch, Vendor Pay"
+                                  placeholder="Details..."
                                   className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-white text-sm outline-none focus:border-cyber-red"
                               />
                           </div>
                           <div>
+                               <label className="text-[10px] uppercase font-bold text-gray-500">Category</label>
+                               <select 
+                                   value={expCategory}
+                                   onChange={e => setExpCategory(e.target.value)}
+                                   className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-white text-sm outline-none"
+                               >
+                                   {settings.expenseCategories.map(cat => (
+                                       <option key={cat} value={cat}>{cat}</option>
+                                   ))}
+                                   <option value="Other">Other</option>
+                               </select>
+                          </div>
+                          <div className="col-span-2">
                               <label className="text-[10px] uppercase font-bold text-gray-500">Amount</label>
                               <input 
                                   type="number" step="0.01"
@@ -110,7 +124,10 @@ const Ledger: React.FC<LedgerProps> = ({ sales }) => {
                           todayExpenses.map(exp => (
                               <div key={exp.id} className="flex justify-between items-center bg-white/5 p-3 rounded-lg border border-white/5 group">
                                   <div>
-                                      <div className="text-white font-bold text-sm">{exp.description}</div>
+                                      <div className="flex items-center gap-2">
+                                          <span className="text-white font-bold text-sm">{exp.description}</span>
+                                          <span className="text-[10px] text-gray-500 border border-gray-600 px-1 rounded">{exp.category}</span>
+                                      </div>
                                       <div className="text-[10px] text-gray-500">{new Date(exp.timestamp).toLocaleTimeString()}</div>
                                   </div>
                                   <div className="flex items-center gap-4">

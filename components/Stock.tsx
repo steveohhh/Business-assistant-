@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Batch, BatchExpense } from '../types';
-import { Plus, Trash2, AlertTriangle, Settings, DollarSign, TrendingUp, X, Truck, BarChart2, MoreVertical, Save, Package } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, Settings, DollarSign, TrendingUp, X, Truck, BarChart2, MoreVertical, Save, Package, Scissors } from 'lucide-react';
 import { useData } from '../DataContext';
 import { AreaChart, Area, ResponsiveContainer, Tooltip } from 'recharts';
 
@@ -11,7 +11,7 @@ interface StockProps {
 }
 
 const Stock: React.FC<StockProps> = ({ batches, onAddBatch, onDeleteBatch }) => {
-  const { updateBatch, sales } = useData();
+  const { updateBatch, sales, settings, addOperationalExpense } = useData();
   const [showForm, setShowForm] = useState(false);
   const [editingBatch, setEditingBatch] = useState<Batch | null>(null);
   
@@ -22,12 +22,16 @@ const Stock: React.FC<StockProps> = ({ batches, onAddBatch, onDeleteBatch }) => 
     providerCut: 0,
     purchasePrice: 0,
     fees: 0,
-    strainType: 'Hybrid',
+    strainType: 'Rock', // Default to Rock
   });
 
   // Expense Management State
   const [expenseDesc, setExpenseDesc] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
+
+  // Stock Adjustment State
+  const [adjType, setAdjType] = useState<'PERSONAL' | 'LOSS' | 'CORRECTION'>('PERSONAL');
+  const [adjAmount, setAdjAmount] = useState('');
 
   // --- METRICS ENGINE ---
   const batchMetrics = useMemo(() => {
@@ -86,13 +90,14 @@ const Stock: React.FC<StockProps> = ({ batches, onAddBatch, onDeleteBatch }) => 
       orderedWeight: formData.orderedWeight,
       providerCut: formData.providerCut,
       personalUse: 0,
+      loss: 0,
       actualWeight: actual,
       purchasePrice: formData.purchasePrice,
       fees: formData.fees,
       expenses: [],
       trueCostPerGram: costPerGram,
-      wholesalePrice: 0,
-      targetRetailPrice: 0,
+      wholesalePrice: settings.defaultWholesalePrice, 
+      targetRetailPrice: settings.defaultPricePerGram, 
       currentStock: actual,
       status: 'Active',
       dateAdded: new Date().toISOString(),
@@ -100,7 +105,7 @@ const Stock: React.FC<StockProps> = ({ batches, onAddBatch, onDeleteBatch }) => 
 
     onAddBatch(newBatch);
     setShowForm(false);
-    setFormData({ name: '', orderedWeight: 0, providerCut: 0, purchasePrice: 0, fees: 0, strainType: 'Hybrid' });
+    setFormData({ name: '', orderedWeight: 0, providerCut: 0, purchasePrice: 0, fees: 0, strainType: 'Rock' });
   };
 
   const handleAddExpense = (batch: Batch) => {
@@ -129,6 +134,45 @@ const Stock: React.FC<StockProps> = ({ batches, onAddBatch, onDeleteBatch }) => 
           expenses: batch.expenses.filter(e => e.id !== expenseId)
       };
       updateBatch(updatedBatch);
+  };
+
+  const handleStockAdjustment = (batch: Batch) => {
+      if (!adjAmount) return;
+      const amount = parseFloat(adjAmount);
+      if (isNaN(amount) || amount <= 0) return;
+
+      if (adjType === 'PERSONAL') {
+          updateBatch({
+              ...batch,
+              personalUse: batch.personalUse + amount,
+              currentStock: batch.currentStock - amount
+          });
+      } else if (adjType === 'LOSS') {
+          updateBatch({
+              ...batch,
+              loss: (batch.loss || 0) + amount,
+              currentStock: batch.currentStock - amount
+          });
+          // Also log financial loss
+          addOperationalExpense({
+              id: Date.now().toString(),
+              description: `Loss/Theft: ${batch.name} (${amount}g)`,
+              amount: amount * batch.trueCostPerGram,
+              timestamp: new Date().toISOString(),
+              category: 'Loss/Waste'
+          });
+      } else if (adjType === 'CORRECTION') {
+           // Direct fix of stock number, assumes variance is loss or found item
+           const diff = batch.currentStock - amount;
+           // Implementation choice: Just set currentStock. 
+           // If we want to track where it went, we'd need more complex logic.
+           // For simple correction:
+           updateBatch({
+               ...batch,
+               currentStock: amount
+           });
+      }
+      setAdjAmount('');
   };
 
   const { actual, costPerGram } = calculatePreview();
@@ -163,7 +207,7 @@ const Stock: React.FC<StockProps> = ({ batches, onAddBatch, onDeleteBatch }) => 
                         <div>
                             <div className="flex items-center gap-2">
                                 <h3 className="text-white font-bold text-lg">{batch.name}</h3>
-                                <span className={`text-[10px] px-2 py-0.5 rounded border ${batch.strainType === 'Indica' ? 'border-purple-500 text-purple-500' : batch.strainType === 'Sativa' ? 'border-yellow-500 text-yellow-500' : 'border-green-500 text-green-500'} uppercase`}>
+                                <span className={`text-[10px] px-2 py-0.5 rounded border ${batch.strainType === 'Rock' ? 'border-gray-400 text-gray-400' : 'border-cyan-400 text-cyan-400'} uppercase font-black`}>
                                     {batch.strainType}
                                 </span>
                             </div>
@@ -232,17 +276,16 @@ const Stock: React.FC<StockProps> = ({ batches, onAddBatch, onDeleteBatch }) => 
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="text-xs text-gray-400 uppercase font-bold">Strain Name</label>
+                            <label className="text-xs text-gray-400 uppercase font-bold">Product Name</label>
                             <input required className="w-full bg-black/50 border border-white/10 rounded p-3 text-white focus:border-blue-500 outline-none" 
                                 value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
                         </div>
                         <div>
-                            <label className="text-xs text-gray-400 uppercase font-bold">Type</label>
+                            <label className="text-xs text-gray-400 uppercase font-bold">Category</label>
                             <select className="w-full bg-black/50 border border-white/10 rounded p-3 text-white outline-none"
                                 value={formData.strainType} onChange={e => setFormData({...formData, strainType: e.target.value})}>
-                                <option>Hybrid</option>
-                                <option>Indica</option>
-                                <option>Sativa</option>
+                                <option value="Rock">Rock (Dry/Solid)</option>
+                                <option value="Wet">Wet (Live/Sauce)</option>
                             </select>
                         </div>
                     </div>
@@ -296,7 +339,7 @@ const Stock: React.FC<StockProps> = ({ batches, onAddBatch, onDeleteBatch }) => 
       {/* EDIT BATCH MODAL */}
       {editingBatch && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-              <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl w-full max-w-2xl h-[80vh] flex flex-col shadow-2xl overflow-hidden">
+              <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl w-full max-w-3xl h-[85vh] flex flex-col shadow-2xl overflow-hidden">
                   <div className="p-6 border-b border-white/10 flex justify-between items-center bg-white/5">
                       <h3 className="text-white font-bold text-xl uppercase tracking-wider">{editingBatch.name} Ledger</h3>
                       <button onClick={() => setEditingBatch(null)}><X className="text-gray-400 hover:text-white"/></button>
@@ -307,7 +350,7 @@ const Stock: React.FC<StockProps> = ({ batches, onAddBatch, onDeleteBatch }) => 
                       {/* Configuration */}
                       <div className="grid grid-cols-2 gap-6">
                            <div className="bg-black/40 p-4 rounded-xl border border-white/5">
-                               <label className="text-xs text-gray-400 uppercase font-bold block mb-2">Target Retail Price ($)</label>
+                               <label className="text-xs text-gray-400 uppercase font-bold block mb-2">Target Retail Price ($/g)</label>
                                <input type="number" className="w-full bg-white/5 border border-white/10 rounded p-2 text-white font-mono"
                                   value={editingBatch.targetRetailPrice || ''} 
                                   onChange={e => updateBatch({...editingBatch, targetRetailPrice: parseFloat(e.target.value)})}
@@ -315,13 +358,60 @@ const Stock: React.FC<StockProps> = ({ batches, onAddBatch, onDeleteBatch }) => 
                                />
                            </div>
                            <div className="bg-black/40 p-4 rounded-xl border border-white/5">
-                               <label className="text-xs text-gray-400 uppercase font-bold block mb-2">Personal Use / Lost (g)</label>
+                               <label className="text-xs text-gray-400 uppercase font-bold block mb-2">Wholesale Price ($/g)</label>
                                <input type="number" className="w-full bg-white/5 border border-white/10 rounded p-2 text-white font-mono"
-                                  value={editingBatch.personalUse || ''}
-                                  onChange={e => updateBatch({...editingBatch, personalUse: parseFloat(e.target.value)})}
-                                  placeholder="Weight Adjustment"
+                                  value={editingBatch.wholesalePrice || ''} 
+                                  onChange={e => updateBatch({...editingBatch, wholesalePrice: parseFloat(e.target.value)})}
+                                  placeholder="Bulk Rate"
                                />
                            </div>
+                      </div>
+
+                      {/* STOCK ADJUSTMENT TOOL */}
+                      <div className="bg-cyber-panel border border-white/10 rounded-xl p-4">
+                          <h4 className="text-white font-bold text-sm uppercase mb-4 flex items-center gap-2">
+                              <Scissors size={14} className="text-cyber-gold"/> Stock Adjustment Tool
+                          </h4>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                              <button onClick={() => setAdjType('PERSONAL')} className={`py-2 px-3 rounded text-xs font-bold border ${adjType === 'PERSONAL' ? 'bg-cyber-gold text-black border-cyber-gold' : 'border-gray-700 text-gray-400'}`}>
+                                  Personal Use
+                              </button>
+                              <button onClick={() => setAdjType('LOSS')} className={`py-2 px-3 rounded text-xs font-bold border ${adjType === 'LOSS' ? 'bg-red-500 text-white border-red-500' : 'border-gray-700 text-gray-400'}`}>
+                                  Loss / Theft
+                              </button>
+                              <button onClick={() => setAdjType('CORRECTION')} className={`py-2 px-3 rounded text-xs font-bold border ${adjType === 'CORRECTION' ? 'bg-blue-500 text-white border-blue-500' : 'border-gray-700 text-gray-400'}`}>
+                                  Correction
+                              </button>
+                          </div>
+                          
+                          <div className="flex gap-2">
+                              <input 
+                                type="number" 
+                                value={adjAmount}
+                                onChange={e => setAdjAmount(e.target.value)}
+                                placeholder={adjType === 'CORRECTION' ? "New Total Weight (g)" : "Weight to Remove (g)"}
+                                className="flex-1 bg-black/40 border border-white/10 rounded p-2 text-white outline-none"
+                              />
+                              <button onClick={() => handleStockAdjustment(editingBatch)} className="bg-white/10 hover:bg-white/20 text-white px-4 rounded font-bold text-sm">
+                                  Execute
+                              </button>
+                          </div>
+                          <div className="mt-2 text-[10px] text-gray-500">
+                              {adjType === 'PERSONAL' && "Deducts from stock. Increases Personal Use counter. Affects true cost calc."}
+                              {adjType === 'LOSS' && "Deducts from stock. Logs financial loss in Ledger. Affects true cost calc."}
+                              {adjType === 'CORRECTION' && "Hard override of current stock level. Use for counting errors."}
+                          </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                         <div className="bg-black/40 p-4 rounded-xl border border-white/5">
+                            <span className="text-xs text-gray-500 uppercase block">Total Personal Use</span>
+                            <span className="text-white font-mono">{editingBatch.personalUse || 0}g</span>
+                         </div>
+                         <div className="bg-black/40 p-4 rounded-xl border border-white/5">
+                            <span className="text-xs text-gray-500 uppercase block">Total Loss/Waste</span>
+                            <span className="text-red-400 font-mono">{editingBatch.loss || 0}g</span>
+                         </div>
                       </div>
 
                       {/* Expenses List */}
@@ -348,8 +438,17 @@ const Stock: React.FC<StockProps> = ({ batches, onAddBatch, onDeleteBatch }) => 
                           </div>
 
                           <div className="flex gap-2 border-t border-white/5 pt-4">
-                              <input className="flex-1 bg-black/40 border border-white/10 rounded p-2 text-white text-sm" placeholder="Reason (e.g. Trimming)"
-                                  value={expenseDesc} onChange={e => setExpenseDesc(e.target.value)} />
+                               <select 
+                                  className="bg-black/40 border border-white/10 rounded p-2 text-white text-sm outline-none"
+                                  value={expenseDesc}
+                                  onChange={e => setExpenseDesc(e.target.value)}
+                               >
+                                  <option value="">- Category -</option>
+                                  {settings.expenseCategories.map(cat => (
+                                      <option key={cat} value={cat}>{cat}</option>
+                                  ))}
+                                  <option value="Other">Other</option>
+                               </select>
                               <input className="w-24 bg-black/40 border border-white/10 rounded p-2 text-white text-sm font-mono" placeholder="$0.00" type="number"
                                   value={expenseAmount} onChange={e => setExpenseAmount(e.target.value)} />
                               <button onClick={() => handleAddExpense(editingBatch)} className="bg-white/10 hover:bg-white/20 text-white p-2 rounded">

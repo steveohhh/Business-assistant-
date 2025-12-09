@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Batch, Customer } from '../types';
 import { useData } from '../DataContext';
-import { ShoppingCart, Users, DollarSign, Scale, Calculator, RefreshCw, Eye, EyeOff, Sparkles, ChevronRight, Layers, UserCircle, MessageSquare, Anchor, ShieldAlert, Zap } from 'lucide-react';
+import { ShoppingCart, Users, DollarSign, Scale, Calculator, RefreshCw, Eye, EyeOff, Sparkles, ChevronRight, Layers, UserCircle, MessageSquare, Anchor, ShieldAlert, Zap, AlertCircle } from 'lucide-react';
 
 interface POSProps {
   batches: Batch[];
@@ -10,97 +10,80 @@ interface POSProps {
 }
 
 const POS: React.FC<POSProps> = ({ batches, customers, onProcessSale }) => {
-  const { settings, stagedTransaction, stageTransaction } = useData();
-  const [selectedBatchId, setSelectedBatchId] = useState<string>('');
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
-  const [selectedSalesRep, setSelectedSalesRep] = useState<string>(settings.staffMembers[0] || 'Admin');
+  const { settings, stagedTransaction, stageTransaction, posState, updatePOSState } = useData();
   
-  // Pricing Mode: Retail vs Wholesale
-  const [pricingTier, setPricingTier] = useState<'RETAIL' | 'WHOLESALE'>('RETAIL');
-
-  // Bi-directional inputs
-  const [cashInput, setCashInput] = useState<string>('');
-  const [weightInput, setWeightInput] = useState<string>('');
-  
-  // Initialize with Global Setting
-  const [targetPricePerGram, setTargetPricePerGram] = useState<number>(settings.defaultPricePerGram); 
   const [showProfitDetails, setShowProfitDetails] = useState(true);
 
   // CONSUME STAGED TRANSACTION (From Profit Planner)
   useEffect(() => {
     if (stagedTransaction) {
-        setSelectedBatchId(stagedTransaction.batchId);
-        setWeightInput(stagedTransaction.weight.toString());
-        setCashInput(stagedTransaction.amount.toFixed(2));
-        // Clear stage after consuming
+        updatePOSState({
+            batchId: stagedTransaction.batchId,
+            weightInput: stagedTransaction.weight.toString(),
+            cashInput: stagedTransaction.amount.toFixed(2)
+        });
         stageTransaction(null);
     }
-  }, [stagedTransaction, stageTransaction]);
+  }, [stagedTransaction]);
 
-  const selectedBatch = batches.find(b => b.id === selectedBatchId);
-  const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
+  const selectedBatch = batches.find(b => b.id === posState.batchId);
+  const selectedCustomer = customers.find(c => c.id === posState.customerId);
 
-  // Auto-Sync Price when Batch Changes OR Pricing Tier Changes
+  // Auto-Sync Price Logic
   useEffect(() => {
     if (selectedBatch) {
         let batchPrice = settings.defaultPricePerGram;
         
-        if (pricingTier === 'RETAIL') {
+        if (posState.pricingTier === 'RETAIL') {
             batchPrice = selectedBatch.targetRetailPrice > 0 ? selectedBatch.targetRetailPrice : settings.defaultPricePerGram;
         } else {
-             // Fallback to retail price if wholesale not set, or just 0 if strict
-            batchPrice = selectedBatch.wholesalePrice > 0 ? selectedBatch.wholesalePrice : selectedBatch.targetRetailPrice;
+             // Wholesale Logic
+            batchPrice = selectedBatch.wholesalePrice > 0 ? selectedBatch.wholesalePrice : settings.defaultWholesalePrice;
         }
 
-        setTargetPricePerGram(batchPrice);
+        // Only update target price if it changed to prevent loop
+        if (batchPrice !== posState.targetPrice) {
+            updatePOSState({ targetPrice: batchPrice });
+        }
         
-        // Auto-recalculate existing inputs
-        if (weightInput && !stagedTransaction) {
-            const w = parseFloat(weightInput);
-            if (!isNaN(w)) setCashInput((w * batchPrice).toFixed(2));
+        // Note: We do NOT auto-recalc cash input here to preserve user manual edits unless they explicitly toggle tier
+    } else {
+        if (posState.targetPrice !== settings.defaultPricePerGram) {
+            updatePOSState({ targetPrice: settings.defaultPricePerGram });
         }
-    } else {
-        setTargetPricePerGram(settings.defaultPricePerGram);
     }
-  }, [selectedBatchId, pricingTier, settings.defaultPricePerGram]);
+  }, [posState.batchId, posState.pricingTier, settings.defaultPricePerGram, settings.defaultWholesalePrice]);
 
-  // Logic: When cash changes, calculate weight based on target price
+
   const handleCashChange = (val: string) => {
-    setCashInput(val);
-    const cash = parseFloat(val);
-    if (!isNaN(cash) && targetPricePerGram > 0) {
-      setWeightInput((cash / targetPricePerGram).toFixed(2));
-    } else {
-      setWeightInput('');
-    }
+    // Allows user to override cash (e.g. short payment)
+    updatePOSState({ cashInput: val });
   };
 
-  // Logic: When weight changes, calculate cash based on target price
   const handleWeightChange = (val: string) => {
-    setWeightInput(val);
     const weight = parseFloat(val);
+    let newCash = '';
     if (!isNaN(weight)) {
-      setCashInput((weight * targetPricePerGram).toFixed(2));
-    } else {
-      setCashInput('');
+      newCash = (weight * posState.targetPrice).toFixed(2);
     }
+    updatePOSState({ weightInput: val, cashInput: newCash });
   };
 
   const setPreset = (grams: number) => {
-    setWeightInput(grams.toString());
-    setCashInput((grams * targetPricePerGram).toFixed(2));
+    const cash = (grams * posState.targetPrice).toFixed(2);
+    updatePOSState({ weightInput: grams.toString(), cashInput: cash });
   };
 
   const handleCompleteSale = () => {
     if (!selectedBatch) return;
     
-    if (!selectedCustomerId) {
+    if (!posState.customerId) {
         alert("Please select a customer to track metrics."); 
         return;
     }
 
-    const weight = parseFloat(weightInput);
-    const amount = parseFloat(cashInput);
+    const weight = parseFloat(posState.weightInput);
+    const amount = parseFloat(posState.cashInput);
     
     if (isNaN(weight) || isNaN(amount) || weight <= 0) return;
 
@@ -112,11 +95,7 @@ const POS: React.FC<POSProps> = ({ batches, customers, onProcessSale }) => {
     const costBasis = weight * selectedBatch.trueCostPerGram;
     const profit = amount - costBasis;
 
-    onProcessSale(selectedBatch.id, selectedCustomerId, selectedSalesRep, weight, amount, profit);
-    
-    // Reset
-    setCashInput('');
-    setWeightInput('');
+    onProcessSale(selectedBatch.id, posState.customerId, posState.salesRep, weight, amount, profit);
   };
 
   // RECOMMENDATION ENGINE LOGIC
@@ -124,11 +103,9 @@ const POS: React.FC<POSProps> = ({ batches, customers, onProcessSale }) => {
       const activeBatches = batches.filter(b => b.currentStock > 0);
       if (!selectedCustomer || !selectedCustomer.psychProfile) return activeBatches.slice(0, 3);
 
-      // Sort logic based on archetype
       const archetype = selectedCustomer.psychProfile.primary;
       
       if (['Optimiser', 'Analyst', 'Minimalist'].includes(archetype)) {
-          // Suggest Best Value (Lowest Markups)
           return [...activeBatches].sort((a,b) => {
               const markupA = a.targetRetailPrice / a.trueCostPerGram;
               const markupB = b.targetRetailPrice / b.trueCostPerGram;
@@ -136,11 +113,9 @@ const POS: React.FC<POSProps> = ({ batches, customers, onProcessSale }) => {
           }).slice(0, 3);
       } 
       else if (['Impulsive', 'Opportunist', 'Reactor'].includes(archetype)) {
-          // Suggest High Ticket / Flashy (Highest Retail Price)
           return [...activeBatches].sort((a,b) => b.targetRetailPrice - a.targetRetailPrice).slice(0, 3);
       }
       else {
-          // Suggest Highest Stock (Move inventory)
           return [...activeBatches].sort((a,b) => b.currentStock - a.currentStock).slice(0, 3);
       }
   };
@@ -148,8 +123,12 @@ const POS: React.FC<POSProps> = ({ batches, customers, onProcessSale }) => {
   const recommendedBatches = getRecommendedBatches();
 
   // Derived Profit display
-  const currentWeight = parseFloat(weightInput) || 0;
-  const currentAmount = parseFloat(cashInput) || 0;
+  const currentWeight = parseFloat(posState.weightInput) || 0;
+  const currentAmount = parseFloat(posState.cashInput) || 0;
+  const expectedAmount = currentWeight * posState.targetPrice;
+  // Calculate if payment is short (with small float tolerance)
+  const isShort = currentAmount < expectedAmount - 0.05; 
+  
   const estimatedCost = selectedBatch ? currentWeight * selectedBatch.trueCostPerGram : 0;
   const projectedProfit = currentAmount - estimatedCost;
   const marginPercent = currentAmount > 0 ? (projectedProfit / currentAmount) * 100 : 0;
@@ -167,8 +146,8 @@ const POS: React.FC<POSProps> = ({ batches, customers, onProcessSale }) => {
                 </label>
                 <select 
                     className="w-full bg-black/50 border border-white/10 rounded-lg p-3 text-white outline-none focus:border-cyber-gold"
-                    value={selectedSalesRep}
-                    onChange={(e) => setSelectedSalesRep(e.target.value)}
+                    value={posState.salesRep}
+                    onChange={(e) => updatePOSState({ salesRep: e.target.value })}
                 >
                     {settings.staffMembers.map(staff => (
                         <option key={staff} value={staff}>{staff}</option>
@@ -182,8 +161,8 @@ const POS: React.FC<POSProps> = ({ batches, customers, onProcessSale }) => {
                 </label>
                 <select 
                     className="w-full bg-black/50 border border-white/10 rounded-lg p-3 text-white outline-none focus:border-cyber-gold"
-                    value={selectedBatchId}
-                    onChange={(e) => setSelectedBatchId(e.target.value)}
+                    value={posState.batchId}
+                    onChange={(e) => updatePOSState({ batchId: e.target.value })}
                 >
                     <option value="">-- Select Inventory --</option>
                     {batches.filter(b => b.currentStock > 0).map(b => (
@@ -200,8 +179,8 @@ const POS: React.FC<POSProps> = ({ batches, customers, onProcessSale }) => {
                 </label>
                 <select 
                     className="w-full bg-black/50 border border-white/10 rounded-lg p-3 text-white outline-none focus:border-cyber-gold"
-                    value={selectedCustomerId}
-                    onChange={(e) => setSelectedCustomerId(e.target.value)}
+                    value={posState.customerId}
+                    onChange={(e) => updatePOSState({ customerId: e.target.value })}
                 >
                     <option value="">-- Select Customer --</option>
                     {customers.map(c => (
@@ -222,26 +201,30 @@ const POS: React.FC<POSProps> = ({ batches, customers, onProcessSale }) => {
                 <div className="flex items-center gap-4">
                      <div className="flex bg-black/50 rounded-lg p-1 border border-white/10">
                          <button 
-                            onClick={() => setPricingTier('RETAIL')}
-                            className={`px-3 py-1 rounded text-xs font-bold uppercase transition-all ${pricingTier === 'RETAIL' ? 'bg-cyber-green text-black' : 'text-gray-500 hover:text-white'}`}
+                            onClick={() => updatePOSState({ pricingTier: 'RETAIL' })}
+                            className={`px-3 py-1 rounded text-xs font-bold uppercase transition-all ${posState.pricingTier === 'RETAIL' ? 'bg-cyber-green text-black' : 'text-gray-500 hover:text-white'}`}
                          >
                              Retail
                          </button>
                          <button 
-                            onClick={() => setPricingTier('WHOLESALE')}
-                            className={`px-3 py-1 rounded text-xs font-bold uppercase transition-all ${pricingTier === 'WHOLESALE' ? 'bg-cyber-gold text-black' : 'text-gray-500 hover:text-white'}`}
+                            onClick={() => updatePOSState({ pricingTier: 'WHOLESALE' })}
+                            className={`px-3 py-1 rounded text-xs font-bold uppercase transition-all ${posState.pricingTier === 'WHOLESALE' ? 'bg-cyber-gold text-black' : 'text-gray-500 hover:text-white'}`}
                          >
                              Wholesale
                          </button>
                      </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <span className={`text-xl font-bold ${pricingTier === 'RETAIL' ? 'text-cyber-green' : 'text-cyber-gold'}`}>$</span>
+                    <span className={`text-xl font-bold ${posState.pricingTier === 'RETAIL' ? 'text-cyber-green' : 'text-cyber-gold'}`}>$</span>
                     <input 
                         type="number" 
-                        value={targetPricePerGram}
-                        onChange={(e) => setTargetPricePerGram(parseFloat(e.target.value) || 0)}
-                        className={`bg-transparent border-b w-24 text-center font-mono text-2xl text-white outline-none ${pricingTier === 'RETAIL' ? 'border-cyber-green' : 'border-cyber-gold'}`}
+                        value={posState.targetPrice}
+                        onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            updatePOSState({ targetPrice: val });
+                            // Don't auto-calc on price manual edit, let them type
+                        }}
+                        className={`bg-transparent border-b w-24 text-center font-mono text-2xl text-white outline-none ${posState.pricingTier === 'RETAIL' ? 'border-cyber-green' : 'border-cyber-gold'}`}
                     />
                     <span className="text-gray-400 text-sm">/ gram</span>
                 </div>
@@ -253,13 +236,20 @@ const POS: React.FC<POSProps> = ({ batches, customers, onProcessSale }) => {
                     <label className="flex items-center gap-2 text-cyber-green font-bold uppercase text-sm">
                         <DollarSign size={16} /> Cash In
                     </label>
-                    <input 
-                        type="number" 
-                        value={cashInput}
-                        onChange={(e) => handleCashChange(e.target.value)}
-                        placeholder="0.00"
-                        className="w-full bg-black/60 border border-cyber-green/30 rounded-xl p-4 text-4xl font-mono text-white outline-none focus:border-cyber-green focus:shadow-[0_0_25px_rgba(16,185,129,0.2)] transition-all"
-                    />
+                    <div className="relative">
+                        <input 
+                            type="number" 
+                            value={posState.cashInput}
+                            onChange={(e) => handleCashChange(e.target.value)}
+                            placeholder="0.00"
+                            className={`w-full bg-black/60 border rounded-xl p-4 text-4xl font-mono text-white outline-none transition-all ${isShort ? 'border-red-500 focus:border-red-500' : 'border-cyber-green/30 focus:border-cyber-green'}`}
+                        />
+                        {isShort && (
+                            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-red-500 flex items-center gap-1 text-xs font-bold uppercase bg-black/80 px-2 py-1 rounded border border-red-500/30">
+                                <AlertCircle size={12}/> Short
+                            </span>
+                        )}
+                    </div>
                 </div>
                 <div className="space-y-2">
                     <label className="flex items-center gap-2 text-cyber-purple font-bold uppercase text-sm">
@@ -267,7 +257,7 @@ const POS: React.FC<POSProps> = ({ batches, customers, onProcessSale }) => {
                     </label>
                     <input 
                         type="number" 
-                        value={weightInput}
+                        value={posState.weightInput}
                         onChange={(e) => handleWeightChange(e.target.value)}
                         placeholder="0.00"
                         className="w-full bg-black/60 border border-cyber-purple/30 rounded-xl p-4 text-4xl font-mono text-white outline-none focus:border-cyber-purple focus:shadow-[0_0_25px_rgba(99,102,241,0.2)] transition-all"
@@ -287,7 +277,7 @@ const POS: React.FC<POSProps> = ({ batches, customers, onProcessSale }) => {
                      </button>
                  ))}
                  <button 
-                    onClick={() => { setCashInput(''); setWeightInput(''); }}
+                    onClick={() => updatePOSState({ cashInput: '', weightInput: '' })}
                     className="bg-red-500/10 hover:bg-red-500 hover:text-white border border-red-500/30 rounded-lg py-3 flex items-center justify-center transition-all"
                  >
                     <RefreshCw size={14} />
@@ -336,7 +326,7 @@ const POS: React.FC<POSProps> = ({ batches, customers, onProcessSale }) => {
 
         <button 
             onClick={handleCompleteSale}
-            disabled={!selectedBatch || !selectedCustomer || currentAmount <= 0}
+            disabled={!selectedBatch || !posState.customerId || currentAmount <= 0}
             className="w-full bg-gradient-to-r from-cyber-gold to-yellow-600 text-black font-black text-xl py-5 rounded-xl uppercase tracking-[0.2em] hover:brightness-110 hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all shadow-[0_0_30px_rgba(212,175,55,0.2)]"
         >
             Execute Sale
@@ -416,7 +406,7 @@ const POS: React.FC<POSProps> = ({ batches, customers, onProcessSale }) => {
                         {recommendedBatches.length > 0 ? recommendedBatches.map(b => (
                             <div 
                                 key={b.id} 
-                                onClick={() => setSelectedBatchId(b.id)}
+                                onClick={() => updatePOSState({ batchId: b.id })}
                                 className="bg-white/5 hover:bg-white/10 p-3 rounded-lg cursor-pointer transition-all group"
                             >
                                 <div className="flex justify-between items-center">
@@ -446,7 +436,7 @@ const POS: React.FC<POSProps> = ({ batches, customers, onProcessSale }) => {
                 <div className="space-y-4">
                     <div className="flex justify-between items-end">
                         <span className="text-white font-bold text-lg">{selectedBatch.name}</span>
-                        <span className="text-xs text-cyber-gold border border-cyber-gold px-2 py-0.5 rounded uppercase">{selectedBatch.strainType}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded uppercase font-bold border ${selectedBatch.strainType === 'Rock' ? 'border-gray-500 text-gray-500' : 'border-cyan-400 text-cyan-400'}`}>{selectedBatch.strainType}</span>
                     </div>
                     
                     <div className="w-full bg-gray-800 h-2 rounded-full overflow-hidden">

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Customer, AssessmentData, MicroSignal } from '../types';
+import { Customer, AssessmentData, MicroSignal, SituationalEncounter } from '../types';
 import { analyzeCustomerProfile, generateAvatar } from '../services/geminiService';
 import { useData } from '../DataContext';
 import { 
     User, Sparkles, X, Activity, Shield, Heart, DollarSign, 
-    Edit3, Save, Brain, FileText, BarChart2, AlertTriangle, Zap, Target, Lock, Eye, Clock, TrendingUp, ChevronRight, ChevronLeft, Camera, RefreshCw, Radio, PlusCircle
+    Edit3, Save, Brain, FileText, BarChart2, AlertTriangle, Zap, Target, Lock, Eye, Clock, TrendingUp, ChevronRight, ChevronLeft, Camera, RefreshCw, Radio, PlusCircle, BookOpen, Layers
 } from 'lucide-react';
 import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Legend } from 'recharts';
 
@@ -19,64 +19,103 @@ const BEHAVIOR_TAGS = [
     "Knows Product", "Quick/Rush", "Gift Buyer", "Ask for Discount", "Cash Only"
 ];
 
-// --- MICRO-SIGNAL LOGGER ---
-const MicroSignalLogger = ({ customer, onAddSignal, onScanHistory }: { customer: Customer, onAddSignal: (s: MicroSignal) => void, onScanHistory: () => void }) => {
-    
-    const quickSignals = [
-        { label: "Price Sensitive", cat: 'VERBAL', event: "Complained about price", intensity: 4 },
-        { label: "Rushed", cat: 'NON_VERBAL', event: "Checked watch/phone freq", intensity: 3 },
-        { label: "Chatty", cat: 'VERBAL', event: "Extended small talk", intensity: 2 },
-        { label: "Quality Focus", cat: 'VERBAL', event: "Asked technical questions", intensity: 4 },
-        { label: "Indecisive", cat: 'NON_VERBAL', event: "Hesitated > 5 mins", intensity: 3 },
-        { label: "Cash Heavy", cat: 'TRANSACTIONAL', event: "Paid large bills", intensity: 3 },
-    ];
+// --- ASSESSMENT OPTIONS DICTIONARY ---
+const ASSESSMENT_OPTIONS = {
+    defaultBehavior: ["Guarded", "Chatty", "Rushed", "Relaxed", "Anxious", "Dominant", "Passive"],
+    unexpectedReaction: ["Freeze", "Aggression", "Curiosity", "Indifference", "Humor", "Suspicion"],
+    disagreementStyle: ["Argumentative", "Passive-Aggressive", "Silent", "Diplomatic", "Yielding"],
+    controlFocus: ["Price", "Quality", "Time", "Environment", "Process", "None"],
+    avoidance: ["Personal Info", "Money talk", "Eye Contact", "Commitment", "Small Talk"],
+    focusObject: ["Product Visuals", "Scent/Smell", "Numbers/Stats", "Status/Brand", "Relationship", "Efficiency"],
+    responseSpeed: ["Instant", "Calculated", "Hesitant", "Erratic", "Slow"],
+    frustrationTrigger: ["Waiting", "Confusion", "Being Corrected", "High Prices", "No Stock", "Ambiguity"],
+    calmingTrigger: ["Reassurance", "Data/Facts", "Discount", "Empathy", "Space", "Options"],
+    coreDrive: ["Security", "Significance", "Efficiency", "Connection", "Variety", "Growth"]
+};
+
+// --- RPG STAT BAR COMPONENT ---
+const StatBar = ({ label, value, color }: { label: string, value: number, color: string }) => (
+    <div className="mb-2">
+        <div className="flex justify-between text-[10px] uppercase font-bold mb-1">
+            <span className="text-gray-400">{label}</span>
+            <span className={color}>{value}/100</span>
+        </div>
+        <div className="h-1.5 w-full bg-gray-800 rounded-full overflow-hidden">
+            <div 
+                className={`h-full ${color.replace('text-', 'bg-')} transition-all duration-1000 ease-out`} 
+                style={{ width: `${value}%` }}
+            ></div>
+        </div>
+    </div>
+);
+
+// --- SITUATIONAL ENCOUNTER LOGGER ---
+const EncounterLogger = ({ customer, onAddEncounter }: { customer: Customer, onAddEncounter: (e: SituationalEncounter) => void }) => {
+    const [situation, setSituation] = useState('');
+    const [reaction, setReaction] = useState('');
+    const [outcome, setOutcome] = useState<'POSITIVE'|'NEGATIVE'|'NEUTRAL'>('NEUTRAL');
+
+    const handleLog = () => {
+        if(!situation || !reaction) return;
+        onAddEncounter({
+            id: Date.now().toString(),
+            timestamp: new Date().toISOString(),
+            situation,
+            reaction,
+            outcome
+        });
+        setSituation('');
+        setReaction('');
+    };
 
     return (
         <div className="bg-cyber-panel border border-white/10 rounded-2xl p-6 mb-6">
-            <h3 className="text-white font-bold uppercase text-sm mb-4 flex items-center gap-2"><Radio size={16} className="text-cyber-green animate-pulse"/> Signal Intelligence</h3>
+            <h3 className="text-white font-bold uppercase text-sm mb-4 flex items-center gap-2"><BookOpen size={16} className="text-cyber-gold"/> Situational Analysis</h3>
             
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
-                {quickSignals.map((s, i) => (
-                    <button 
-                        key={i}
-                        onClick={() => onAddSignal({
-                            id: Date.now().toString() + i,
-                            timestamp: new Date().toISOString(),
-                            category: s.cat as any,
-                            event: s.event,
-                            intensity: s.intensity
-                        })}
-                        className="bg-white/5 hover:bg-cyber-gold hover:text-black border border-white/10 rounded-lg p-2 text-[10px] font-bold uppercase transition-all flex flex-col items-center gap-1"
-                    >
-                        <span>{s.label}</span>
-                    </button>
-                ))}
-            </div>
-
-            <div className="flex justify-between items-center mb-2 border-t border-white/5 pt-4">
-                <span className="text-xs text-gray-500 uppercase font-bold">Signal Log ({customer.microSignals?.length || 0})</span>
-                <button onClick={onScanHistory} className="text-[10px] text-cyber-purple hover:text-white flex items-center gap-1">
-                    <RefreshCw size={10} /> Scan Sales History
+            <div className="space-y-4 mb-4">
+                <textarea 
+                    className="w-full bg-black/40 border border-white/10 rounded-lg p-3 text-xs text-white focus:border-cyber-gold outline-none"
+                    placeholder="Context: What happened? (e.g. 'I denied a discount', 'Police drove by')"
+                    rows={2}
+                    value={situation}
+                    onChange={e => setSituation(e.target.value)}
+                />
+                <textarea 
+                    className="w-full bg-black/40 border border-white/10 rounded-lg p-3 text-xs text-white focus:border-cyber-gold outline-none"
+                    placeholder="Reaction: How did they act? (e.g. 'Got angry then apologized', 'Stayed silent')"
+                    rows={2}
+                    value={reaction}
+                    onChange={e => setReaction(e.target.value)}
+                />
+                <div className="flex gap-2">
+                    {['POSITIVE', 'NEUTRAL', 'NEGATIVE'].map(o => (
+                        <button 
+                            key={o}
+                            onClick={() => setOutcome(o as any)}
+                            className={`flex-1 py-2 text-[10px] font-bold uppercase rounded border transition-all ${outcome === o 
+                                ? (o === 'POSITIVE' ? 'bg-cyber-green text-black border-cyber-green' : o === 'NEGATIVE' ? 'bg-red-500 text-white border-red-500' : 'bg-gray-500 text-white border-gray-500') 
+                                : 'bg-transparent text-gray-500 border-gray-700'}`}
+                        >
+                            {o}
+                        </button>
+                    ))}
+                </div>
+                <button onClick={handleLog} className="w-full bg-white/10 hover:bg-white/20 text-white py-2 rounded text-xs font-bold uppercase border border-white/10">
+                    Log Encounter
                 </button>
             </div>
 
-            <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
-                {customer.microSignals && customer.microSignals.slice().reverse().map(signal => (
-                    <div key={signal.id} className="flex justify-between items-center bg-black/40 p-2 rounded border border-white/5">
-                        <div>
-                            <div className="text-xs text-white font-bold">{signal.event}</div>
-                            <div className="text-[9px] text-gray-500">{new Date(signal.timestamp).toLocaleDateString()} • {signal.category}</div>
+            <div className="space-y-2 max-h-40 overflow-y-auto">
+                {customer.encounters && customer.encounters.slice().reverse().map(e => (
+                    <div key={e.id} className="bg-white/5 p-3 rounded border border-white/5 text-xs">
+                        <div className="flex justify-between mb-1">
+                            <span className="text-gray-500">{new Date(e.timestamp).toLocaleDateString()}</span>
+                            <span className={`font-bold ${e.outcome === 'POSITIVE' ? 'text-cyber-green' : e.outcome === 'NEGATIVE' ? 'text-red-500' : 'text-gray-400'}`}>{e.outcome}</span>
                         </div>
-                        <div className="flex gap-0.5">
-                            {[...Array(5)].map((_, i) => (
-                                <div key={i} className={`w-1 h-3 rounded-full ${i < signal.intensity ? 'bg-cyber-green' : 'bg-gray-800'}`}></div>
-                            ))}
-                        </div>
+                        <div className="text-white mb-1"><span className="text-cyber-gold">CTX:</span> {e.situation}</div>
+                        <div className="text-gray-300"><span className="text-cyber-purple">RXN:</span> {e.reaction}</div>
                     </div>
                 ))}
-                {(!customer.microSignals || customer.microSignals.length === 0) && (
-                    <div className="text-center text-gray-600 text-[10px] italic py-2">No behavioral signals recorded. Tap above to log.</div>
-                )}
             </div>
         </div>
     );
@@ -86,15 +125,17 @@ const MicroSignalLogger = ({ customer, onAddSignal, onScanHistory }: { customer:
 const AssessmentForm = ({ data, onChange }: { data: AssessmentData, onChange: (d: AssessmentData) => void }) => {
     const update = (key: keyof AssessmentData, val: any) => onChange({ ...data, [key]: val });
 
-    const InputField = ({ label, field, placeholder }: { label: string, field: keyof AssessmentData, placeholder?: string }) => (
+    const SelectField = ({ label, field, options }: { label: string, field: keyof AssessmentData, options: string[] }) => (
         <div className="flex flex-col">
             <label className="text-[10px] uppercase font-bold text-gray-500 mb-1">{label}</label>
-            <input 
-                className="bg-black/40 border border-white/10 rounded-lg p-2 text-sm text-white focus:border-cyber-gold outline-none"
+            <select 
+                className="bg-black/40 border border-white/10 rounded-lg p-2 text-sm text-white focus:border-cyber-gold outline-none appearance-none"
                 value={data[field] as string}
                 onChange={e => update(field, e.target.value)}
-                placeholder={placeholder}
-            />
+            >
+                <option value="">-- Select --</option>
+                {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+            </select>
         </div>
     );
 
@@ -118,20 +159,20 @@ const AssessmentForm = ({ data, onChange }: { data: AssessmentData, onChange: (d
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="bg-white/5 p-4 rounded-xl border border-white/5 space-y-3">
                     <h4 className="text-cyber-gold font-bold uppercase text-xs flex items-center gap-2"><Eye size={14}/> Observable Pattern</h4>
-                    <InputField label="1. Default Behavior" field="defaultBehavior" placeholder="e.g. Guarded, Chatty, Rushed" />
-                    <InputField label="2. Unexpected Reaction" field="unexpectedReaction" placeholder="How do they react to surprise?" />
-                    <InputField label="3. Disagreement Style" field="disagreementStyle" placeholder="Silent, Argumentative, Passive?" />
-                    <InputField label="4. Control Focus" field="controlFocus" placeholder="What do they try to control?" />
-                    <InputField label="5. Avoidance" field="avoidance" placeholder="What do they avoid discussing?" />
+                    <SelectField label="1. Default Behavior" field="defaultBehavior" options={ASSESSMENT_OPTIONS.defaultBehavior} />
+                    <SelectField label="2. Unexpected Reaction" field="unexpectedReaction" options={ASSESSMENT_OPTIONS.unexpectedReaction} />
+                    <SelectField label="3. Disagreement Style" field="disagreementStyle" options={ASSESSMENT_OPTIONS.disagreementStyle} />
+                    <SelectField label="4. Control Focus" field="controlFocus" options={ASSESSMENT_OPTIONS.controlFocus} />
+                    <SelectField label="5. Avoidance" field="avoidance" options={ASSESSMENT_OPTIONS.avoidance} />
                 </div>
 
                 <div className="bg-white/5 p-4 rounded-xl border border-white/5 space-y-3">
                     <h4 className="text-cyber-purple font-bold uppercase text-xs flex items-center gap-2"><Brain size={14}/> Cognitive Drivers</h4>
-                    <InputField label="6. Focus Object" field="focusObject" placeholder="Price, Quality, Status, Speed?" />
-                    <InputField label="7. Response Speed" field="responseSpeed" placeholder="Instant, Hesitant, Calculated?" />
-                    <InputField label="8. Frustration Trigger" field="frustrationTrigger" placeholder="Waiting, Ambiguity, Being corrected?" />
-                    <InputField label="9. Calming Trigger" field="calmingTrigger" placeholder="Facts, Empathy, Options?" />
-                    <InputField label="10. Core Drive" field="coreDrive" placeholder="Efficiency, Power, Reassurance?" />
+                    <SelectField label="6. Focus Object" field="focusObject" options={ASSESSMENT_OPTIONS.focusObject} />
+                    <SelectField label="7. Response Speed" field="responseSpeed" options={ASSESSMENT_OPTIONS.responseSpeed} />
+                    <SelectField label="8. Frustration Trigger" field="frustrationTrigger" options={ASSESSMENT_OPTIONS.frustrationTrigger} />
+                    <SelectField label="9. Calming Trigger" field="calmingTrigger" options={ASSESSMENT_OPTIONS.calmingTrigger} />
+                    <SelectField label="10. Core Drive" field="coreDrive" options={ASSESSMENT_OPTIONS.coreDrive} />
                 </div>
             </div>
 
@@ -144,209 +185,47 @@ const AssessmentForm = ({ data, onChange }: { data: AssessmentData, onChange: (d
     );
 };
 
-// --- RISK RADAR COMPONENT ---
-const RiskRadar = ({ assessment }: { assessment: AssessmentData }) => {
-    const data = [
-        { subject: 'Impulsivity', A: assessment.impulsivityScore, fullMark: 10 },
-        { subject: 'Loyalty', A: assessment.loyaltyScore, fullMark: 10 },
-        { subject: 'Risk', A: assessment.riskScore, fullMark: 10 },
-        { subject: 'Engagement', A: (assessment.impulsivityScore + assessment.loyaltyScore) / 2, fullMark: 10 },
-        { subject: 'Stability', A: 10 - assessment.riskScore, fullMark: 10 },
-    ];
-
+// --- LARGE HERO CARD ---
+const HeroCustomerCard = ({ customer, onClick }: { customer: Customer, onClick: () => void }) => {
     return (
-        <div className="bg-black/40 border border-white/10 rounded-2xl p-4 h-64 flex flex-col items-center justify-center relative">
-            <h4 className="absolute top-4 left-4 text-xs font-bold text-gray-500 uppercase flex items-center gap-2">
-                <Shield size={12} /> Behavioral Matrix
-            </h4>
-            <ResponsiveContainer width="100%" height="100%">
-                <RadarChart cx="50%" cy="50%" outerRadius="70%" data={data}>
-                    <PolarGrid stroke="#333" />
-                    <PolarAngleAxis dataKey="subject" tick={{ fill: '#666', fontSize: 10, fontWeight: 'bold' }} />
-                    <PolarRadiusAxis angle={30} domain={[0, 10]} tick={false} axisLine={false} />
-                    <Radar
-                        name="Subject"
-                        dataKey="A"
-                        stroke="#D4AF37"
-                        strokeWidth={2}
-                        fill="#D4AF37"
-                        fillOpacity={0.3}
-                    />
-                </RadarChart>
-            </ResponsiveContainer>
-        </div>
-    );
-};
-
-// --- LTV SIMULATOR ---
-const LTVSimulator = ({ customer }: { customer: Customer }) => {
-    const [discountSim, setDiscountSim] = useState(0);
-
-    const txCount = customer.transactionHistory.length;
-    const totalSpent = customer.totalSpent;
-    const avgOrder = txCount > 0 ? totalSpent / txCount : 0;
-    
-    // Simple Approximation of frequency (Tx per month)
-    const firstTx = customer.transactionHistory.length > 0 ? new Date(customer.transactionHistory[0].timestamp) : new Date();
-    const daysSinceFirst = Math.max(1, (new Date().getTime() - firstTx.getTime()) / (1000 * 3600 * 24));
-    const freqPerYear = txCount > 0 ? (txCount / daysSinceFirst) * 365 : 0;
-    
-    const retentionBase = customer.psychProfile?.lifecycle?.retentionFactor || 1.0;
-    
-    // Simulation Logic
-    const simRetention = retentionBase * (1 + (discountSim / 100) * 1.5); // 10% discount = 15% retention boost
-    const simAvgOrder = avgOrder * (1 - (discountSim / 100)); // 10% discount = 10% less revenue per tx
-    
-    const currentLTVProjection = avgOrder * freqPerYear * retentionBase; // 1 Year forward
-    const simulatedLTVProjection = simAvgOrder * freqPerYear * simRetention;
-
-    return (
-        <div className="bg-cyber-panel border border-white/10 rounded-2xl p-6 mt-6 animate-fade-in">
-             <div className="flex items-center gap-2 mb-4 text-cyber-green">
-                 <TrendingUp size={20} />
-                 <h3 className="font-bold uppercase tracking-wider text-sm">Lifetime Value Predictor</h3>
-             </div>
-
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
-                 <div>
-                     <p className="text-xs text-gray-500 uppercase font-bold mb-1">Current 1-Year Projection</p>
-                     <p className="text-3xl font-mono text-white">${currentLTVProjection.toFixed(0)}</p>
-                     <p className="text-[10px] text-gray-500">Based on ${avgOrder.toFixed(0)} avg order × {freqPerYear.toFixed(1)} visits/yr</p>
-                 </div>
-                 <div>
-                     <p className="text-xs text-gray-500 uppercase font-bold mb-1">Retention Factor (AI)</p>
-                     <p className={`text-3xl font-mono ${retentionBase >= 1 ? 'text-cyber-green' : 'text-cyber-red'}`}>
-                         {retentionBase.toFixed(2)}x
-                     </p>
-                     <p className="text-[10px] text-gray-500">
-                        Churn Risk: {customer.psychProfile?.lifecycle?.churnProbability}%
-                     </p>
-                 </div>
-             </div>
-
-             <div className="bg-black/40 rounded-xl p-4 border border-white/5">
-                 <div className="flex justify-between items-center mb-4">
-                     <span className="text-xs font-bold text-cyber-gold uppercase">Discount Strategy Simulator</span>
-                     <span className="text-cyber-gold font-mono">{discountSim}% Offer</span>
-                 </div>
-                 <input 
-                    type="range" min="0" max="25" step="5" 
-                    value={discountSim} 
-                    onChange={e => setDiscountSim(parseInt(e.target.value))}
-                    className="w-full accent-cyber-gold h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer mb-4"
-                  />
-                 
-                 <div className="flex justify-between items-center">
-                     <div>
-                         <span className="block text-[10px] text-gray-500 uppercase">Projected LTV Impact</span>
-                         <span className={`text-xl font-mono font-bold ${simulatedLTVProjection > currentLTVProjection ? 'text-cyber-green' : 'text-cyber-red'}`}>
-                             ${simulatedLTVProjection.toFixed(0)} 
-                             <span className="text-xs ml-1 opacity-70">
-                                 ({simulatedLTVProjection > currentLTVProjection ? '+' : ''}
-                                 {(simulatedLTVProjection - currentLTVProjection).toFixed(0)})
-                             </span>
-                         </span>
-                     </div>
-                     <div className="text-right">
-                         <span className="block text-[10px] text-gray-500 uppercase">Retention Boost</span>
-                         <span className="text-cyber-purple font-mono font-bold">
-                             +{( (simRetention - retentionBase) / retentionBase * 100).toFixed(0)}%
-                         </span>
-                     </div>
-                 </div>
-             </div>
-        </div>
-    );
-}
-
-// --- SWIPEABLE CARD COMPONENT ---
-interface SwipeableCardProps {
-    children: React.ReactNode;
-    onSwipeLeft: () => void;
-    onSwipeRight: () => void;
-    onClick: () => void;
-}
-
-const SwipeableCustomerCard: React.FC<SwipeableCardProps> = ({ children, onSwipeLeft, onSwipeRight, onClick }) => {
-    const [offset, setOffset] = useState(0);
-    const [startX, setStartX] = useState(0);
-    const [startY, setStartY] = useState(0);
-    const [swiping, setSwiping] = useState(false);
-    const [bgAction, setBgAction] = useState<'NONE' | 'LEFT' | 'RIGHT'>('NONE');
-
-    const handleTouchStart = (e: React.TouchEvent) => {
-        setStartX(e.targetTouches[0].clientX);
-        setStartY(e.targetTouches[0].clientY);
-        setSwiping(false);
-        setBgAction('NONE');
-    };
-
-    const handleTouchMove = (e: React.TouchEvent) => {
-        if (!startX) return;
-        const currentX = e.targetTouches[0].clientX;
-        const currentY = e.targetTouches[0].clientY;
-        const diffX = currentX - startX;
-        const diffY = currentY - startY;
-
-        // Check for primarily horizontal movement
-        if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 10) {
-            setSwiping(true);
-            const constrainedOffset = Math.max(-150, Math.min(150, diffX));
-            setOffset(constrainedOffset);
-
-            // Visual indicator
-            if (constrainedOffset > 50) setBgAction('RIGHT'); // Add Note
-            else if (constrainedOffset < -50) setBgAction('LEFT'); // View Profile
-            else setBgAction('NONE');
-        }
-    };
-
-    const handleTouchEnd = () => {
-        if (offset > 100) {
-            onSwipeRight();
-        } else if (offset < -100) {
-            onSwipeLeft();
-        } else if (!swiping && Math.abs(offset) < 5) {
-            onClick();
-        }
-        setOffset(0);
-        setStartX(0);
-        setSwiping(false);
-        setBgAction('NONE');
-    };
-
-    return (
-        <div 
-            className="relative w-full rounded-xl overflow-hidden cursor-pointer bg-cyber-panel border border-white/5 select-none"
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-            onClick={!swiping ? onClick : undefined}
-        >
-            {/* Background Action Layers */}
-            <div className={`absolute inset-0 flex items-center justify-between px-6 transition-colors duration-300 ${
-                bgAction === 'RIGHT' ? 'bg-cyber-green' : 
-                bgAction === 'LEFT' ? 'bg-cyber-purple' : 'bg-transparent'
-            }`}>
-                <div className={`flex items-center gap-2 font-bold text-black transition-opacity duration-300 ${bgAction === 'RIGHT' ? 'opacity-100' : 'opacity-0'}`}>
-                    <Edit3 size={20} /> Add Note
-                </div>
-                <div className={`flex items-center gap-2 font-bold text-white transition-opacity duration-300 ${bgAction === 'LEFT' ? 'opacity-100' : 'opacity-0'}`}>
-                    View Profile <Brain size={20} />
+        <div onClick={onClick} className="bg-cyber-panel border border-white/10 rounded-2xl overflow-hidden cursor-pointer group hover:border-cyber-gold transition-all relative shadow-xl">
+            {/* Image Area */}
+            <div className="h-72 w-full relative">
+                {customer.avatarImage ? (
+                    <img src={customer.avatarImage} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" />
+                ) : (
+                    <div className="w-full h-full bg-gradient-to-b from-gray-800 to-black flex items-center justify-center">
+                        <User size={64} className="text-gray-600"/>
+                    </div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent"></div>
+                
+                <div className="absolute bottom-4 left-4">
+                    <h3 className="text-3xl font-black text-white uppercase tracking-tighter drop-shadow-lg">{customer.name}</h3>
+                    <p className="text-cyber-gold font-bold text-xs uppercase tracking-widest drop-shadow-md">
+                        Level {Math.floor(customer.totalSpent / 500) + 1} {customer.psychProfile?.primary || 'New Profile'}
+                    </p>
                 </div>
             </div>
 
-            {/* Foreground Content */}
-            <div 
-                className="relative bg-cyber-panel p-4 transition-transform duration-150 ease-out h-full border border-white/5 hover:border-cyber-gold/30 rounded-xl"
-                style={{ transform: `translateX(${offset}px)` }}
-            >
-                {children}
+            {/* Stats Area */}
+            <div className="p-5 bg-black/60 backdrop-blur-sm border-t border-white/10">
+                {customer.psychProfile?.rpgStats ? (
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                        <StatBar label="Negotiation" value={customer.psychProfile.rpgStats.negotiation} color="text-cyber-purple" />
+                        <StatBar label="Intellect" value={customer.psychProfile.rpgStats.intellect} color="text-blue-400" />
+                        <StatBar label="Patience" value={customer.psychProfile.rpgStats.patience} color="text-cyber-green" />
+                        <StatBar label="Risk" value={customer.psychProfile.rpgStats.riskPerception} color="text-red-500" />
+                    </div>
+                ) : (
+                    <div className="text-center py-4 text-gray-500 text-xs italic">
+                        Initialize Psyche Engine for Stats
+                    </div>
+                )}
             </div>
         </div>
     );
 };
-
 
 // --- MAIN CUSTOMERS COMPONENT ---
 const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onUpdateCustomer }) => {
@@ -361,6 +240,7 @@ const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onUpdat
   // Editing State
   const [editNotes, setEditNotes] = useState('');
   const [visualDesc, setVisualDesc] = useState('');
+  const [imageQuality, setImageQuality] = useState<'fast' | 'detailed'>('fast');
   const [assessmentForm, setAssessmentForm] = useState<AssessmentData | undefined>(undefined);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isGeneratingAvatar, setIsGeneratingAvatar] = useState(false);
@@ -385,6 +265,7 @@ const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onUpdat
       notes: '',
       tags: [],
       microSignals: [],
+      encounters: [],
       totalSpent: 0,
       lastPurchase: new Date().toISOString(),
       transactionHistory: []
@@ -417,7 +298,8 @@ const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onUpdat
         ...selectedCustomer, 
         assessmentData: assessmentForm, 
         notes: editNotes,
-        microSignals: selectedCustomer.microSignals || []
+        microSignals: selectedCustomer.microSignals || [],
+        encounters: selectedCustomer.encounters || []
     };
     const profile = await analyzeCustomerProfile(customerToAnalyze, selectedCustomer.transactionHistory);
     setIsAnalyzing(false);
@@ -439,9 +321,9 @@ const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onUpdat
         return;
     }
     setIsGeneratingAvatar(true);
-    addNotification("Constructing neural identity...", 'INFO');
+    addNotification(`Constructing ${imageQuality} neural identity...`, 'INFO');
     
-    const base64Image = await generateAvatar(visualDesc);
+    const base64Image = await generateAvatar(visualDesc, imageQuality);
     setIsGeneratingAvatar(false);
     
     if (base64Image && selectedCustomer) {
@@ -463,73 +345,14 @@ const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onUpdat
     setSelectedCustomer(updated);
   };
 
-  const handleAddSignal = (signal: MicroSignal) => {
+  const handleAddEncounter = (encounter: SituationalEncounter) => {
       if (!selectedCustomer) return;
-      const updatedSignals = [...(selectedCustomer.microSignals || []), signal];
-      const updated = { ...selectedCustomer, microSignals: updatedSignals };
+      const updatedEncounters = [...(selectedCustomer.encounters || []), encounter];
+      const updated = { ...selectedCustomer, encounters: updatedEncounters };
       onUpdateCustomer(updated);
       setSelectedCustomer(updated);
-      addNotification("Behavioral signal recorded.", 'SUCCESS');
-  };
-
-  const handleScanHistory = () => {
-      if (!selectedCustomer) return;
-      
-      const newSignals: MicroSignal[] = [];
-      const tx = selectedCustomer.transactionHistory;
-      
-      // Whale Check
-      if (tx.some(t => t.amount > 200)) {
-          newSignals.push({ id: Date.now() + '1', timestamp: new Date().toISOString(), category: 'TRANSACTIONAL', event: "High Value Purchase (>$200)", intensity: 5 });
-      }
-      
-      // Frequency Check
-      if (tx.length > 5) {
-          const first = new Date(tx[0].timestamp).getTime();
-          const last = new Date(tx[tx.length - 1].timestamp).getTime();
-          const days = (last - first) / (1000 * 3600 * 24);
-          if (days < 30) {
-               newSignals.push({ id: Date.now() + '2', timestamp: new Date().toISOString(), category: 'TRANSACTIONAL', event: "High Frequency Buyer", intensity: 4 });
-          }
-      }
-
-      // Profit Check (if margin is low repeatedly)
-      if (tx.length > 0) {
-          const lowMarginTx = tx.filter(t => (t.profit / t.amount) < 0.2);
-          if (lowMarginTx.length >= 2) {
-              newSignals.push({ id: Date.now() + '3', timestamp: new Date().toISOString(), category: 'TRANSACTIONAL', event: "Low Margin / Negotiator", intensity: 4 });
-          }
-      }
-
-      // Dedupe based on event name to avoid spamming same signal on multiple clicks
-      const existingEvents = new Set((selectedCustomer.microSignals || []).map(s => s.event));
-      const uniqueNewSignals = newSignals.filter(s => !existingEvents.has(s.event));
-
-      if (uniqueNewSignals.length > 0) {
-          const updated = { ...selectedCustomer, microSignals: [...(selectedCustomer.microSignals || []), ...uniqueNewSignals] };
-          onUpdateCustomer(updated);
-          setSelectedCustomer(updated);
-          addNotification(`Identified ${uniqueNewSignals.length} new signals from sales data.`, 'SUCCESS');
-      } else {
-          addNotification("No new patterns found in transaction history.", 'INFO');
-      }
-  };
-
-  const getTierColor = (spent: number) => {
-    if (spent > 5000) return 'text-purple-400 border-purple-400';
-    if (spent > 1000) return 'text-cyber-gold border-cyber-gold';
-    return 'text-gray-400 border-gray-600';
-  };
-
-  const handleSwipeLeft = (c: Customer) => {
-      setSelectedCustomer(c);
-      setActiveTab('PSYCHOLOGY');
-  };
-
-  const handleSwipeRight = (c: Customer) => {
-      setSelectedCustomer(c);
-      setActiveTab('OVERVIEW');
-  };
+      addNotification("Situational encounter logged.", 'SUCCESS');
+  }
 
   return (
     <div className="h-full flex flex-col">
@@ -545,62 +368,35 @@ const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onUpdat
         </form>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* NEW HERO CARD GRID */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-10">
         {customers.map(c => (
-          <SwipeableCustomerCard 
+          <HeroCustomerCard 
             key={c.id} 
+            customer={c}
             onClick={() => { setSelectedCustomer(c); setActiveTab('OVERVIEW'); }}
-            onSwipeLeft={() => handleSwipeLeft(c)}
-            onSwipeRight={() => handleSwipeRight(c)}
-          >
-            <div className="flex items-center gap-3">
-              {c.avatarImage ? (
-                  <img src={c.avatarImage} alt="Avatar" className="w-12 h-12 rounded-full border-2 border-cyber-gold object-cover" />
-              ) : (
-                  <div className={`w-12 h-12 rounded-full border-2 flex items-center justify-center font-bold text-lg ${getTierColor(c.totalSpent)}`}>
-                    {c.name.charAt(0)}
-                  </div>
-              )}
-              
-              <div>
-                <h3 className="text-white font-bold">{c.name}</h3>
-                <p className="text-xs text-gray-500">Last: {new Date(c.lastPurchase).toLocaleDateString()}</p>
-              </div>
-              <div className="ml-auto text-right">
-                <span className="block text-cyber-green font-mono">${c.totalSpent.toFixed(0)}</span>
-              </div>
-            </div>
-            {c.psychProfile && (
-              <div className="mt-3 flex gap-2">
-                 <div className="text-[10px] text-cyber-purple bg-cyber-purple/10 border border-cyber-purple/20 px-2 py-0.5 rounded uppercase tracking-wider">{c.psychProfile.primary}</div>
-                 {c.assessmentData && c.assessmentData.riskScore > 7 && <div className="text-[10px] text-red-500 bg-red-500/10 border border-red-500/20 px-2 py-0.5 rounded uppercase flex items-center gap-1"><AlertTriangle size={8}/> Risk</div>}
-              </div>
-            )}
-          </SwipeableCustomerCard>
+          />
         ))}
       </div>
 
       {selectedCustomer && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-[#0a0a0a] w-full max-w-6xl h-[90vh] rounded-3xl border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.8)] flex overflow-hidden">
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-[#0a0a0a] w-full max-w-7xl h-[95vh] rounded-3xl border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.8)] flex overflow-hidden">
             
             {/* SIDEBAR */}
-            <div className="w-64 bg-white/5 border-r border-white/5 flex flex-col p-6">
+            <div className="w-80 bg-white/5 border-r border-white/5 flex flex-col p-6 overflow-y-auto">
                 <div className="flex flex-col items-center text-center mb-8 relative">
-                    {selectedCustomer.avatarImage ? (
-                        <div className="relative group cursor-pointer">
-                            <img src={selectedCustomer.avatarImage} className="w-24 h-24 rounded-full border-2 border-cyber-gold mb-4 object-cover shadow-[0_0_15px_rgba(212,175,55,0.3)]" />
-                            <div className="absolute inset-0 bg-black/60 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                <span className="text-xs text-white">Edit</span>
+                    <div className="w-48 h-48 rounded-xl overflow-hidden mb-4 border-2 border-cyber-gold shadow-[0_0_25px_rgba(212,175,55,0.2)]">
+                        {selectedCustomer.avatarImage ? (
+                            <img src={selectedCustomer.avatarImage} className="w-full h-full object-cover" />
+                        ) : (
+                            <div className="w-full h-full bg-gradient-to-b from-gray-700 to-black flex items-center justify-center">
+                                <User size={64} className="text-gray-500" />
                             </div>
-                        </div>
-                    ) : (
-                        <div className="w-24 h-24 rounded-full bg-gradient-to-b from-gray-700 to-black border-2 border-cyber-gold mb-4 flex items-center justify-center shadow-[0_0_15px_rgba(212,175,55,0.3)]">
-                            <User size={32} className="text-gray-500" />
-                        </div>
-                    )}
+                        )}
+                    </div>
                     
-                    <h2 className="text-xl font-bold text-white mb-1">{selectedCustomer.name}</h2>
+                    <h2 className="text-2xl font-bold text-white mb-1">{selectedCustomer.name}</h2>
                     <p className="text-cyber-gold uppercase text-[10px] tracking-widest">Level {Math.floor(selectedCustomer.totalSpent / 500) + 1} Patron</p>
                 </div>
 
@@ -625,17 +421,16 @@ const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onUpdat
             <div className="flex-1 overflow-y-auto p-8 relative bg-black/20">
                 
                 {activeTab === 'OVERVIEW' && (
-                    <div className="animate-fade-in max-w-3xl">
+                    <div className="animate-fade-in max-w-4xl">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-2xl font-bold text-white uppercase tracking-tight">Field Overview</h3>
                             <button onClick={saveAssessment} className="text-xs flex items-center gap-1 text-cyber-green hover:text-white bg-white/5 px-3 py-1 rounded-full"><Save size={12} /> Save Changes</button>
                         </div>
                         
-                        {/* NEW: MICRO-SIGNAL LOGGER */}
-                        <MicroSignalLogger 
+                        {/* ENCOUNTER LOGGER (NEW) */}
+                        <EncounterLogger 
                             customer={selectedCustomer} 
-                            onAddSignal={handleAddSignal} 
-                            onScanHistory={handleScanHistory}
+                            onAddEncounter={handleAddEncounter} 
                         />
 
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
@@ -653,7 +448,7 @@ const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onUpdat
                                 </div>
                             </div>
                             
-                            {/* VISUAL IDENTITY GENERATOR */}
+                            {/* VISUAL IDENTITY GENERATOR (UPDATED) */}
                             <div className="bg-cyber-panel border border-white/10 rounded-xl p-4">
                                 <div className="flex justify-between items-center mb-2">
                                     <label className="text-xs text-gray-400 uppercase font-bold flex items-center gap-2"><Camera size={12}/> Visual Identity</label>
@@ -666,6 +461,20 @@ const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onUpdat
                                     value={visualDesc}
                                     onChange={(e) => setVisualDesc(e.target.value)}
                                 />
+                                <div className="flex gap-2 mb-2">
+                                    <button 
+                                        onClick={() => setImageQuality('fast')}
+                                        className={`flex-1 py-1 text-[10px] rounded uppercase font-bold border ${imageQuality === 'fast' ? 'bg-cyber-gold text-black border-cyber-gold' : 'text-gray-500 border-gray-700'}`}
+                                    >
+                                        Fast Mode
+                                    </button>
+                                    <button 
+                                        onClick={() => setImageQuality('detailed')}
+                                        className={`flex-1 py-1 text-[10px] rounded uppercase font-bold border ${imageQuality === 'detailed' ? 'bg-cyber-purple text-white border-cyber-purple' : 'text-gray-500 border-gray-700'}`}
+                                    >
+                                        Pro Mode (HD)
+                                    </button>
+                                </div>
                                 <button 
                                     onClick={handleGenerateAvatar}
                                     disabled={isGeneratingAvatar || !visualDesc}
@@ -714,14 +523,15 @@ const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onUpdat
                                          </div>
                                          <p className="text-gray-400 mt-4 leading-relaxed italic border-l-2 border-cyber-gold pl-4 text-lg">"{selectedCustomer.psychProfile.summary}"</p>
                                          
-                                         <div className="flex gap-2 mt-6">
-                                             {selectedCustomer.psychProfile.drives.map(d => (
-                                                 <span key={d} className="bg-white/10 text-xs px-2 py-1 rounded text-white flex items-center gap-1"><Zap size={10}/> {d}</span>
-                                             ))}
-                                             {selectedCustomer.psychProfile.insecurity.map(i => (
-                                                 <span key={i} className="bg-red-500/10 text-xs px-2 py-1 rounded text-red-400 flex items-center gap-1"><Lock size={10}/> {i}</span>
-                                             ))}
-                                         </div>
+                                         {/* RPG STATS IN PROFILE */}
+                                         {selectedCustomer.psychProfile.rpgStats && (
+                                            <div className="mt-6 pt-6 border-t border-white/5 grid grid-cols-2 gap-4">
+                                                <StatBar label="Negotiation" value={selectedCustomer.psychProfile.rpgStats.negotiation} color="text-cyber-purple" />
+                                                <StatBar label="Intellect" value={selectedCustomer.psychProfile.rpgStats.intellect} color="text-blue-400" />
+                                                <StatBar label="Patience" value={selectedCustomer.psychProfile.rpgStats.patience} color="text-cyber-green" />
+                                                <StatBar label="Volatility" value={selectedCustomer.psychProfile.rpgStats.volatility} color="text-red-500" />
+                                            </div>
+                                         )}
                                      </div>
 
                                      {/* STRATEGY DECK */}
@@ -759,8 +569,14 @@ const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onUpdat
                                      <div className="bg-black/40 border border-white/10 rounded-2xl p-6">
                                         <h4 className="text-sm font-bold text-gray-400 uppercase mb-4 flex items-center gap-2"><Activity size={14}/> Cognitive Matrix</h4>
                                         <div className="space-y-4">
-                                            <MatrixBar label="Abstraction" value={selectedCustomer.psychProfile.cognitive.abstraction} color="text-cyber-purple" />
-                                            <MatrixBar label="Cognitive Tempo" value={selectedCustomer.psychProfile.cognitive.tempo} color="text-cyber-gold" />
+                                            <div className="bg-gray-800/50 rounded-lg p-3 flex justify-between items-center">
+                                                <span className="text-xs text-gray-400 uppercase font-bold">Abstraction</span>
+                                                <span className="text-sm font-mono font-bold text-cyber-purple">{selectedCustomer.psychProfile.cognitive.abstraction}</span>
+                                            </div>
+                                            <div className="bg-gray-800/50 rounded-lg p-3 flex justify-between items-center">
+                                                <span className="text-xs text-gray-400 uppercase font-bold">Tempo</span>
+                                                <span className="text-sm font-mono font-bold text-cyber-gold">{selectedCustomer.psychProfile.cognitive.tempo}</span>
+                                            </div>
                                             <div className="bg-gray-800/50 rounded-lg p-3 flex justify-between items-center">
                                                 <span className="text-xs text-gray-400 uppercase font-bold">Friction Aversion</span>
                                                 <span className={`text-sm font-mono font-bold ${selectedCustomer.psychProfile.cognitive.frictionAversion > 70 ? 'text-cyber-red' : 'text-cyber-green'}`}>
@@ -771,10 +587,7 @@ const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onUpdat
                                      </div>
                                      
                                      {/* RADAR CHART */}
-                                     {selectedCustomer.assessmentData && <RiskRadar assessment={selectedCustomer.assessmentData} />}
-                                     
-                                     {/* NEW: LTV SIMULATOR */}
-                                     <LTVSimulator customer={selectedCustomer} />
+                                     {selectedCustomer.assessmentData && <div className="animate-fade-in"><RiskRadar assessment={selectedCustomer.assessmentData} /></div>}
                                      
                                      {selectedCustomer.psychProfile.lifecycle && (
                                          <div className="bg-black/40 border border-white/10 rounded-2xl p-6 flex justify-between items-center">
@@ -804,11 +617,37 @@ const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onUpdat
   );
 };
 
-const MatrixBar = ({ label, value, color }: { label: string, value: string, color: string }) => (
-    <div className="bg-gray-800/50 rounded-lg p-3 flex justify-between items-center">
-        <span className="text-xs text-gray-400 uppercase font-bold">{label}</span>
-        <span className={`text-sm font-mono font-bold ${color}`}>{value}</span>
-    </div>
-);
+const RiskRadar = ({ assessment }: { assessment: AssessmentData }) => {
+    const data = [
+        { subject: 'Impulsivity', A: assessment.impulsivityScore, fullMark: 10 },
+        { subject: 'Loyalty', A: assessment.loyaltyScore, fullMark: 10 },
+        { subject: 'Risk', A: assessment.riskScore, fullMark: 10 },
+        { subject: 'Engagement', A: (assessment.impulsivityScore + assessment.loyaltyScore) / 2, fullMark: 10 },
+        { subject: 'Stability', A: 10 - assessment.riskScore, fullMark: 10 },
+    ];
+
+    return (
+        <div className="bg-black/40 border border-white/10 rounded-2xl p-4 h-64 flex flex-col items-center justify-center relative">
+            <h4 className="absolute top-4 left-4 text-xs font-bold text-gray-500 uppercase flex items-center gap-2">
+                <Shield size={12} /> Behavioral Matrix
+            </h4>
+            <ResponsiveContainer width="100%" height="100%">
+                <RadarChart cx="50%" cy="50%" outerRadius="70%" data={data}>
+                    <PolarGrid stroke="#333" />
+                    <PolarAngleAxis dataKey="subject" tick={{ fill: '#666', fontSize: 10, fontWeight: 'bold' }} />
+                    <PolarRadiusAxis angle={30} domain={[0, 10]} tick={false} axisLine={false} />
+                    <Radar
+                        name="Subject"
+                        dataKey="A"
+                        stroke="#D4AF37"
+                        strokeWidth={2}
+                        fill="#D4AF37"
+                        fillOpacity={0.3}
+                    />
+                </RadarChart>
+            </ResponsiveContainer>
+        </div>
+    );
+};
 
 export default Customers;

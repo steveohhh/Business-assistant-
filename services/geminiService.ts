@@ -7,18 +7,30 @@ const getClient = () => {
 };
 
 // --- IMAGE GENERATION ---
-export const generateAvatar = async (description: string): Promise<string | null> => {
+export const generateAvatar = async (description: string, quality: 'fast' | 'detailed' = 'fast'): Promise<string | null> => {
     if (!process.env.API_KEY) return null;
     const ai = getClient();
+    
+    // Choose model based on quality setting
+    const model = quality === 'detailed' ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image';
+    
+    // Adjust prompt for higher quality if requested
+    const prompt = quality === 'detailed' 
+        ? `Create a highly detailed, cinematic cyberpunk RPG character portrait. Dark futuristic aesthetic, neon lighting, high contrast. Character description: ${description}. 4k resolution, digital art style.`
+        : `Cyberpunk RPG character portrait, digital art, neon style. Description: ${description}`;
+
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-image',
+            model: model,
             contents: {
-                parts: [{ text: `Generate a cyberpunk RPG style character portrait for a character described as: ${description}. The style should be high contrast, digital art, dark futuristic aesthetic, neon accents. Head and shoulders shot.` }]
-            }
+                parts: [{ text: prompt }]
+            },
+            // 3-pro-image-preview supports imageConfig
+            config: quality === 'detailed' ? {
+                imageConfig: { aspectRatio: '1:1', imageSize: '1K' }
+            } : undefined
         });
         
-        // The SDK might return multiple parts, find the image part
         for (const part of response.candidates?.[0]?.content?.parts || []) {
             if (part.inlineData && part.inlineData.data) {
                 return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
@@ -45,14 +57,21 @@ export const analyzeCustomerProfile = async (
   // Process Micro-Signals
   const microSignalsLog = customer.microSignals 
       ? customer.microSignals
-          .slice(-20) // Take last 20
+          .slice(-20) 
           .map(s => `[${s.category}] ${s.event} (Intensity: ${s.intensity})`)
           .join("; ")
       : "No observable micro-signals recorded.";
 
+  // Process Situational Encounters
+  const encountersLog = customer.encounters
+      ? customer.encounters
+          .map(e => `SITUATION: ${e.situation} -> REACTION: ${e.reaction} (Outcome: ${e.outcome})`)
+          .join("\n")
+      : "No detailed situational encounters logged.";
+
   const prompt = `
     ACT AS THE ARCHETYPE ENGINE V3.0.
-    Analyze this subject based on the 10-point behavioral interrogation, transaction history, and OBSERVED MICRO-SIGNALS.
+    Analyze this subject based on behavioral interrogation, sales history, micro-signals, and specific situational encounters.
 
     SUBJECT DATA:
     Name: ${customer.name}
@@ -60,15 +79,23 @@ export const analyzeCustomerProfile = async (
     Behavioral Interrogation: ${assessment}
     Notes: ${customer.notes}
     
-    *** CRITICAL: MICRO-SIGNALS LOG ***
+    *** MICRO-SIGNALS ***
     ${microSignalsLog}
-    ***********************************
+    
+    *** SITUATIONAL ENCOUNTERS ***
+    ${encountersLog}
+    ***********************
 
     ALGORITHM INSTRUCTIONS:
-    1. EXTRACT BEHAVIOURAL FEATURES from both the Assessment AND the Micro-Signals.
-    2. MAP TO ARCHETYPES (Controller, Analyst, Reactor, Drifter, Optimiser, Validator, Challenger, Minimalist, Opportunist, Navigator).
-    3. GENERATE TACTICAL HUD DATA (Short, 1-3 words for HUD display).
-    4. PREDICT LIFECYCLE METRICS.
+    1. EXTRACT BEHAVIOURAL FEATURES from all inputs.
+    2. MAP TO ARCHETYPES.
+    3. GENERATE RPG STATS (0-100) based on behavior.
+       - Negotiation: Ability to haggle/get value.
+       - Intellect: Knowledge of product/pricing.
+       - Patience: Willingness to wait.
+       - Volatility: Likelihood of emotional outburst.
+       - Loyalty: Probability of sticking to this vendor.
+       - RiskPerception: Tolerance for sketchiness/high prices.
 
     OUTPUT JSON ONLY:
     {
@@ -79,16 +106,24 @@ export const analyzeCustomerProfile = async (
         "drives": ["string"],
         "insecurity": ["string"],
         "interactionStrategy": {
-            "tone": "string (Max 2 words, e.g. 'Direct & Firm')",
+            "tone": "string (Max 2 words)",
             "detailLevel": "string",
-            "avoid": ["string (Short topics)"],
-            "stabiliseWith": ["string (Short tactics)"],
-            "persuasionAnchor": "string (Max 2 words, e.g. 'Efficiency' or 'Status')"
+            "avoid": ["string"],
+            "stabiliseWith": ["string"],
+            "persuasionAnchor": "string"
         },
         "cognitive": {
             "abstraction": "Abstract" | "Concrete",
             "tempo": "Fast" | "Slow" | "Variable",
             "frictionAversion": number
+        },
+        "rpgStats": {
+            "negotiation": number,
+            "intellect": number,
+            "patience": number,
+            "volatility": number,
+            "loyalty": number,
+            "riskPerception": number
         },
         "lifecycle": {
             "churnProbability": number,

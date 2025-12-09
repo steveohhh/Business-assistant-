@@ -11,22 +11,23 @@ export interface OperationalExpense {
     description: string;
     amount: number;
     timestamp: string;
-    category: 'PAYOUT' | 'SUPPLIES' | 'MISC';
+    category: string; 
 }
 
 export interface Batch {
   id: string;
   name: string;
-  strainType: 'Indica' | 'Sativa' | 'Hybrid';
+  strainType: 'Rock' | 'Wet'; 
   orderedWeight: number; 
   providerCut: number; 
   personalUse: number; 
+  loss: number; // New: Track wasted/stolen product
   actualWeight: number; 
   purchasePrice: number; 
   fees: number; 
   expenses: BatchExpense[]; 
   trueCostPerGram: number; 
-  wholesalePrice: number; // New: For bulk/resale buyers
+  wholesalePrice: number; 
   targetRetailPrice: number; 
   currentStock: number;
   status: 'Active' | 'Low' | 'Sold Out';
@@ -39,7 +40,7 @@ export interface Sale {
   batchName: string;
   customerId: string;
   customerName: string;
-  salesRep: string; // New: Track which staff member made the sale
+  salesRep: string; 
   weight: number;
   amount: number;
   costBasis: number;
@@ -48,12 +49,25 @@ export interface Sale {
 }
 
 export interface AppSettings {
-  defaultPricePerGram: number;
+  defaultPricePerGram: number; 
+  defaultWholesalePrice: number; 
+  defaultCostEstimate: number; 
   currencySymbol: string;
   lowStockThreshold: number;
   staffMembers: string[]; 
+  expenseCategories: string[]; 
   commissionRate: number; 
-  appPin: string; // New: Security PIN (empty string means disabled)
+  appPin: string; 
+}
+
+export interface POSState {
+    batchId: string;
+    customerId: string;
+    salesRep: string;
+    pricingTier: 'RETAIL' | 'WHOLESALE';
+    cashInput: string;
+    weightInput: string;
+    targetPrice: number;
 }
 
 export type ViewState = 'DASHBOARD' | 'STOCK' | 'POS' | 'CUSTOMERS' | 'ANALYTICS' | 'LEDGER' | 'SETTINGS' | 'PLANNER';
@@ -64,37 +78,51 @@ export interface MicroSignal {
     id: string;
     timestamp: string;
     category: 'VERBAL' | 'NON_VERBAL' | 'TRANSACTIONAL' | 'DIGITAL';
-    event: string; // e.g. "Asked about purity", "Checked watch freq", "Paid in large bills"
-    intensity: number; // 1 (Low) to 5 (High)
+    event: string; 
+    intensity: number; 
+}
+
+export interface SituationalEncounter {
+    id: string;
+    timestamp: string;
+    situation: string; // e.g. "Police drove by during deal"
+    reaction: string; // e.g. "Stayed calm, made a joke"
+    outcome: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
 }
 
 export interface AssessmentData {
-    // The 10-Point Behavioral Interrogation
     defaultBehavior: string;
     unexpectedReaction: string;
     disagreementStyle: string;
     controlFocus: string;
     avoidance: string;
-    focusObject: string; // What do they over-focus on?
+    focusObject: string; 
     responseSpeed: string;
     frustrationTrigger: string;
     calmingTrigger: string;
-    coreDrive: string; // Reassurance, efficiency, power, etc.
-    // Quantitative Flags
-    impulsivityScore: number; // 1-10
-    loyaltyScore: number; // 1-10
-    riskScore: number; // 1-10
+    coreDrive: string; 
+    impulsivityScore: number; 
+    loyaltyScore: number; 
+    riskScore: number; 
+}
+
+export interface RPGStats {
+    negotiation: number; // 0-100
+    intellect: number;
+    patience: number;
+    volatility: number;
+    loyalty: number;
+    riskPerception: number;
 }
 
 export interface ArchetypeProfile {
-    primary: string; // e.g., "Analyst"
-    secondary: string; // e.g., "Navigator"
+    primary: string; 
+    secondary: string; 
     scorePrimary: number;
     scoreSecondary: number;
-    drives: string[]; // e.g., ["Precision", "Autonomy"]
-    insecurity: string[]; // e.g., ["Being wrong"]
+    drives: string[]; 
+    insecurity: string[]; 
     
-    // V3.0 Interaction Strategy
     interactionStrategy: {
         tone: string;
         detailLevel: string;
@@ -103,26 +131,24 @@ export interface ArchetypeProfile {
         persuasionAnchor: string;
     };
     
-    // Cognitive Dimensions
     cognitive: {
         abstraction: 'Abstract' | 'Concrete';
         tempo: 'Fast' | 'Slow' | 'Variable';
-        frictionAversion: number; // 0-100
+        frictionAversion: number; 
     };
 
-    // V3.1 Lifecycle Prediction
+    rpgStats?: RPGStats; // New: Video game style stats
+
     lifecycle: {
-        churnProbability: number; // 0-100%
-        predictedNextPurchase: string; // "Within 3 days"
-        engagementScore: number; // 0-100
-        retentionFactor: number; // Multiplier for LTV calcs (e.g. 1.2 for loyal, 0.8 for churn risk)
+        churnProbability: number; 
+        predictedNextPurchase: string; 
+        engagementScore: number; 
+        retentionFactor: number; 
     };
 
     summary: string;
     lastUpdated: string;
 }
-
-// --- PREDICTIVE ANALYTICS TYPES ---
 
 export interface RestockPrediction {
     batchId: string;
@@ -134,10 +160,10 @@ export interface RestockPrediction {
 }
 
 export interface SalesForecast {
-    period: string; // "Next 7 Days"
+    period: string; 
     predictedRevenue: number;
     predictedVolume: number;
-    topArchetypeTarget: string; // e.g. "Target 'Impulsive Collectors' next week"
+    topArchetypeTarget: string; 
 }
 
 export interface BusinessIntelligence {
@@ -150,10 +176,11 @@ export interface Customer {
   id: string;
   name: string;
   notes: string;
-  visualDescription?: string; // New: For AI Image Gen
-  avatarImage?: string; // New: Base64 Image
+  visualDescription?: string; 
+  avatarImage?: string; 
   tags: string[]; 
-  microSignals: MicroSignal[]; // New: Granular behavioral tracking
+  microSignals: MicroSignal[];
+  encounters?: SituationalEncounter[]; // New: Detailed situational logs 
   assessmentData?: AssessmentData;
   psychProfile?: ArchetypeProfile; 
   totalSpent: number;
@@ -161,7 +188,6 @@ export interface Customer {
   transactionHistory: Sale[];
 }
 
-// --- DATA CONTEXT TYPES ---
 export interface StagedTransaction {
     batchId: string;
     weight: number;

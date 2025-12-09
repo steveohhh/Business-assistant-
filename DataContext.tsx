@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Batch, Customer, Sale, AppSettings, BatchExpense, StagedTransaction, Notification, OperationalExpense, BackupData } from './types';
+import { Batch, Customer, Sale, AppSettings, BatchExpense, StagedTransaction, Notification, OperationalExpense, BackupData, POSState } from './types';
 
 interface DataContextType {
   batches: Batch[];
@@ -9,6 +9,8 @@ interface DataContextType {
   settings: AppSettings;
   stagedTransaction: StagedTransaction | null;
   notifications: Notification[];
+  posState: POSState; // Persistent POS state
+  updatePOSState: (state: Partial<POSState>) => void;
   addBatch: (batch: Batch) => void;
   updateBatch: (batch: Batch) => void;
   deleteBatch: (id: string) => void;
@@ -37,11 +39,25 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Default Settings
   const [settings, setSettings] = useState<AppSettings>({
     defaultPricePerGram: 10,
+    defaultWholesalePrice: 6,
+    defaultCostEstimate: 3,
     currencySymbol: '$',
     lowStockThreshold: 28,
     staffMembers: ['Admin'],
+    expenseCategories: ['Payout', 'Supplies', 'Transport', 'Marketing', 'Misc'],
     commissionRate: 5,
-    appPin: '' // Default to no PIN
+    appPin: '' 
+  });
+
+  // Persistent POS State
+  const [posState, setPosState] = useState<POSState>({
+      batchId: '',
+      customerId: '',
+      salesRep: 'Admin',
+      pricingTier: 'RETAIL',
+      cashInput: '',
+      weightInput: '',
+      targetPrice: 10
   });
 
   // Load from LocalStorage
@@ -53,12 +69,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const loadedSettings = localStorage.getItem('smp_settings');
 
     if (loadedBatches) {
-        // Migration logic for existing batches without new fields
-        const parsed: Batch[] = JSON.parse(loadedBatches);
-        const migrated = parsed.map(b => ({
+        // Migration logic
+        const parsed: any[] = JSON.parse(loadedBatches);
+        const migrated: Batch[] = parsed.map((b: any) => ({
             ...b,
+            strainType: (b.strainType === 'Indica' || b.strainType === 'Sativa' || b.strainType === 'Hybrid') ? 'Rock' : b.strainType, 
             expenses: b.expenses || [],
             personalUse: b.personalUse || 0,
+            loss: b.loss || 0, // New migration
             targetRetailPrice: b.targetRetailPrice || 0,
             wholesalePrice: b.wholesalePrice || 0
         }));
@@ -71,7 +89,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         tags: c.tags || [],
         visualDescription: c.visualDescription || '',
         avatarImage: c.avatarImage || '',
-        microSignals: c.microSignals || [] // Migration for MicroSignals
+        microSignals: c.microSignals || [],
+        encounters: c.encounters || [] // New migration
       }));
       setCustomers(migratedCustomers);
     }
@@ -90,10 +109,18 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const parsedSettings = JSON.parse(loadedSettings);
         setSettings({
             ...parsedSettings,
+            defaultWholesalePrice: parsedSettings.defaultWholesalePrice || 6,
+            defaultCostEstimate: parsedSettings.defaultCostEstimate || 3,
+            expenseCategories: parsedSettings.expenseCategories || ['Payout', 'Supplies', 'Transport', 'Marketing', 'Misc'],
             staffMembers: parsedSettings.staffMembers || ['Admin'],
             commissionRate: parsedSettings.commissionRate || 5,
             appPin: parsedSettings.appPin || ''
         });
+        
+        // Update POS default rep if settings loaded
+        if (parsedSettings.staffMembers && parsedSettings.staffMembers.length > 0) {
+            setPosState(prev => ({ ...prev, salesRep: parsedSettings.staffMembers[0] }));
+        }
     }
   }, []);
 
@@ -116,19 +143,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const recalculateBatchCost = (b: Batch): Batch => {
-      // 1. Calculate Total Costs
       const extraExpenses = b.expenses ? b.expenses.reduce((acc, e) => acc + e.amount, 0) : 0;
       const totalCost = b.purchasePrice + b.fees + extraExpenses;
-
-      // 2. Calculate Sellable Weight (Ordered - Provider Cut - Personal Use)
-      const sellableWeight = Math.max(0.1, b.orderedWeight - b.providerCut - b.personalUse);
-
-      // 3. True Cost
+      // Subtract personal use and loss from sellable weight
+      const sellableWeight = Math.max(0.1, b.orderedWeight - b.providerCut - b.personalUse - (b.loss || 0));
       const trueCostPerGram = totalCost / sellableWeight;
 
       return {
           ...b,
-          actualWeight: sellableWeight, // Update this to reflect theoretical max sellable
+          actualWeight: sellableWeight, 
           trueCostPerGram
       };
   };
@@ -178,8 +201,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (tx) addNotification("Transaction staged for POS.", 'INFO');
   };
 
+  const updatePOSState = (newState: Partial<POSState>) => {
+      setPosState(prev => ({ ...prev, ...newState }));
+  };
+
   const processSale = (batchId: string, customerId: string, salesRep: string, weight: number, amount: number, profit: number) => {
-    // 1. Create Sale Record
     const batch = batches.find(b => b.id === batchId);
     const customer = customers.find(c => c.id === customerId);
     if (!batch || !customer) return;
@@ -200,20 +226,24 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     setSales(prev => [...prev, newSale]);
 
-    // 2. Update Batch Stock
     setBatches(prev => prev.map(b => 
       b.id === batchId ? { ...b, currentStock: b.currentStock - weight } : b
     ));
 
-    // 3. Update Customer History
     const updatedCustomer = {
       ...customer,
       totalSpent: customer.totalSpent + amount,
       lastPurchase: newSale.timestamp,
       transactionHistory: [...customer.transactionHistory, newSale]
     };
-    // Don't call addNotification here via updateCustomer to avoid double toast
     setCustomers(prev => prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c));
+
+    // Reset POS State inputs but keep user/rep
+    setPosState(prev => ({
+        ...prev,
+        weightInput: '',
+        cashInput: ''
+    }));
 
     addNotification("Transaction executed successfully.", 'SUCCESS');
   };
@@ -234,7 +264,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   return (
-    <DataContext.Provider value={{ batches, customers, sales, operationalExpenses, settings, stagedTransaction, notifications, addBatch, updateBatch, deleteBatch, addCustomer, updateCustomer, processSale, addOperationalExpense, deleteOperationalExpense, updateSettings, stageTransaction, addNotification, removeNotification, loadBackup }}>
+    <DataContext.Provider value={{ batches, customers, sales, operationalExpenses, settings, stagedTransaction, notifications, posState, updatePOSState, addBatch, updateBatch, deleteBatch, addCustomer, updateCustomer, processSale, addOperationalExpense, deleteOperationalExpense, updateSettings, stageTransaction, addNotification, removeNotification, loadBackup }}>
       {children}
     </DataContext.Provider>
   );
