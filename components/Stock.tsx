@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Batch, BatchExpense } from '../types';
-import { Plus, Trash2, AlertTriangle, Settings, DollarSign, TrendingUp, X, Truck, BarChart2, MoreVertical, Save, Package, Scissors, Search, Filter, ArrowUpDown, EyeOff, Eye, History, FileText, Activity, Clock, Hourglass } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, Settings, DollarSign, TrendingUp, X, Truck, BarChart2, MoreVertical, Save, Package, Scissors, Search, Filter, ArrowUpDown, EyeOff, Eye, History, FileText, Activity, Clock, Hourglass, Edit3 } from 'lucide-react';
 import { useData } from '../DataContext';
 import { AreaChart, Area, ResponsiveContainer, Tooltip } from 'recharts';
 
@@ -516,8 +516,13 @@ const Stock: React.FC<StockProps> = ({ batches, onAddBatch, onDeleteBatch }) => 
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
               <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl w-full max-w-3xl h-[85vh] flex flex-col shadow-2xl overflow-hidden">
                   <div className="p-6 border-b border-white/10 flex justify-between items-center bg-white/5">
-                      <div>
-                          <h3 className="text-white font-bold text-xl uppercase tracking-wider">{editingBatch.name} Ledger</h3>
+                      <div className="flex-1">
+                          {/* EDITABLE NAME */}
+                          <input 
+                            className="bg-transparent text-white font-bold text-xl uppercase tracking-wider outline-none border-b border-transparent focus:border-white/20 w-full"
+                            value={editingBatch.name}
+                            onChange={e => updateBatch({...editingBatch, name: e.target.value})}
+                          />
                           <p className="text-[10px] text-gray-500">ID: {editingBatch.id}</p>
                       </div>
                       <button onClick={() => setEditingBatch(null)}><X className="text-gray-400 hover:text-white"/></button>
@@ -537,23 +542,68 @@ const Stock: React.FC<StockProps> = ({ batches, onAddBatch, onDeleteBatch }) => 
                       
                       {editTab === 'DETAILS' ? (
                           <>
-                            {/* Configuration */}
-                            <div className="grid grid-cols-2 gap-6">
-                                <div className="bg-black/40 p-4 rounded-xl border border-white/5">
-                                    <label className="text-xs text-gray-400 uppercase font-bold block mb-2">Target Retail Price ($/g)</label>
-                                    <input type="number" className="w-full bg-white/5 border border-white/10 rounded p-2 text-white font-mono"
-                                        value={editingBatch.targetRetailPrice || ''} 
-                                        onChange={e => updateBatch({...editingBatch, targetRetailPrice: parseFloat(e.target.value)})}
-                                        placeholder="Auto-fill POS"
-                                    />
+                            {/* NEW: SOURCE DATA EDITING (Unlocks Buy At) */}
+                            <div className="bg-cyber-panel border border-white/10 rounded-xl p-4">
+                                <h4 className="text-white font-bold text-sm uppercase mb-4 flex items-center gap-2">
+                                    <Edit3 size={14} className="text-blue-400"/> Source & Cost Data
+                                </h4>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] text-gray-500 uppercase font-bold">Total Purchase Cost</label>
+                                        <input 
+                                            type="number"
+                                            className="w-full bg-black/40 border border-white/10 rounded p-2 text-white font-mono focus:border-blue-400 outline-none"
+                                            value={editingBatch.purchasePrice}
+                                            onChange={e => updateBatch({...editingBatch, purchasePrice: parseFloat(e.target.value) || 0})}
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] text-gray-500 uppercase font-bold">Extra Fees</label>
+                                        <input 
+                                            type="number"
+                                            className="w-full bg-black/40 border border-white/10 rounded p-2 text-white font-mono focus:border-blue-400 outline-none"
+                                            value={editingBatch.fees}
+                                            onChange={e => updateBatch({...editingBatch, fees: parseFloat(e.target.value) || 0})}
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] text-gray-500 uppercase font-bold">Initial Weight (g)</label>
+                                        <input 
+                                            type="number"
+                                            className="w-full bg-black/40 border border-white/10 rounded p-2 text-white font-mono focus:border-blue-400 outline-none"
+                                            value={editingBatch.orderedWeight}
+                                            onChange={e => updateBatch({...editingBatch, orderedWeight: parseFloat(e.target.value) || 0})}
+                                        />
+                                    </div>
                                 </div>
-                                <div className="bg-black/40 p-4 rounded-xl border border-white/5">
-                                    <label className="text-xs text-gray-400 uppercase font-bold block mb-2">Wholesale Price ($/g)</label>
-                                    <input type="number" className="w-full bg-white/5 border border-white/10 rounded p-2 text-white font-mono"
-                                        value={editingBatch.wholesalePrice || ''} 
-                                        onChange={e => updateBatch({...editingBatch, wholesalePrice: parseFloat(e.target.value)})}
-                                        placeholder="Bulk Rate"
-                                    />
+                                <div className="mt-3 pt-3 border-t border-white/5 flex justify-between items-center text-xs">
+                                    <span className="text-gray-400">Calculated "Buy At":</span>
+                                    <span className="text-cyber-gold font-mono font-bold">${editingBatch.trueCostPerGram.toFixed(2)} / gram</span>
+                                </div>
+                            </div>
+
+                            {/* Configuration (Unlocks Sell At) */}
+                            <div className="bg-black/40 p-4 rounded-xl border border-white/5">
+                                <h4 className="text-white font-bold text-sm uppercase mb-4 flex items-center gap-2">
+                                    <TrendingUp size={14} className="text-cyber-green"/> Pricing Strategy
+                                </h4>
+                                <div className="grid grid-cols-2 gap-6">
+                                    <div>
+                                        <label className="text-xs text-gray-400 uppercase font-bold block mb-2">Target Retail Price ($/g)</label>
+                                        <input type="number" className="w-full bg-white/5 border border-white/10 rounded p-2 text-white font-mono focus:border-cyber-green outline-none"
+                                            value={editingBatch.targetRetailPrice || ''} 
+                                            onChange={e => updateBatch({...editingBatch, targetRetailPrice: parseFloat(e.target.value) || 0})}
+                                            placeholder="Auto-fill POS"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-gray-400 uppercase font-bold block mb-2">Wholesale Price ($/g)</label>
+                                        <input type="number" className="w-full bg-white/5 border border-white/10 rounded p-2 text-white font-mono focus:border-cyber-green outline-none"
+                                            value={editingBatch.wholesalePrice || ''} 
+                                            onChange={e => updateBatch({...editingBatch, wholesalePrice: parseFloat(e.target.value) || 0})}
+                                            placeholder="Bulk Rate"
+                                        />
+                                    </div>
                                 </div>
                             </div>
 
