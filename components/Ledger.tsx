@@ -1,14 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { Sale, OperationalExpense } from '../types';
-import { useData } from '../DataContext';
-import { Save, CheckCircle, AlertTriangle, TrendingDown, DollarSign, Trash2, Wallet, ArrowDownCircle, PlayCircle, Lock, Download } from 'lucide-react';
+import { useAppStore } from '../stores/useAppStore';
+import { Save, CheckCircle, AlertTriangle, TrendingDown, Trash2, Wallet, ArrowDownCircle, PlayCircle, Lock, Download, Calculator, DollarSign } from 'lucide-react';
 
-interface LedgerProps {
-  sales: Sale[];
-}
-
-const Ledger: React.FC<LedgerProps> = ({ sales }) => {
-  const { operationalExpenses, addOperationalExpense, deleteOperationalExpense, settings, addNotification } = useData();
+const Ledger: React.FC = () => {
+  const { 
+    sales, operationalExpenses, addOperationalExpense, deleteOperationalExpense, 
+    settings, addNotification 
+  } = useAppStore(state => ({
+    sales: state.sales,
+    operationalExpenses: state.operationalExpenses,
+    addOperationalExpense: state.addOperationalExpense,
+    deleteOperationalExpense: state.deleteOperationalExpense,
+    settings: state.settings,
+    addNotification: state.addNotification
+  }));
   
   // Shift State
   const [shiftStarted, setShiftStarted] = useState(false);
@@ -18,11 +24,17 @@ const Ledger: React.FC<LedgerProps> = ({ sales }) => {
   // Ledger State
   const [physicalCash, setPhysicalCash] = useState<string>('');
   const [submitted, setSubmitted] = useState(false);
+  const [showDenominations, setShowDenominations] = useState(false);
 
   // Expense Form State
   const [expDesc, setExpDesc] = useState('');
   const [expAmount, setExpAmount] = useState('');
   const [expCategory, setExpCategory] = useState(settings.expenseCategories[0] || 'Misc');
+
+  // Denominations State
+  const [denoms, setDenoms] = useState({
+      d100: '', d50: '', d20: '', d10: '', d5: '', coins: ''
+  });
 
   // Load Shift State on Mount
   useEffect(() => {
@@ -51,6 +63,8 @@ const Ledger: React.FC<LedgerProps> = ({ sales }) => {
           setSubmitted(false);
           setPhysicalCash('');
           setFloatInput('');
+          setDenoms({ d100: '', d50: '', d20: '', d10: '', d5: '', coins: '' });
+          setShowDenominations(false);
       }
   };
 
@@ -91,6 +105,21 @@ const Ledger: React.FC<LedgerProps> = ({ sales }) => {
     e.preventDefault();
     setSubmitted(true);
   };
+
+  const updateFromDenoms = () => {
+      const total = 
+        (parseFloat(denoms.d100) || 0) * 100 +
+        (parseFloat(denoms.d50) || 0) * 50 +
+        (parseFloat(denoms.d20) || 0) * 20 +
+        (parseFloat(denoms.d10) || 0) * 10 +
+        (parseFloat(denoms.d5) || 0) * 5 +
+        (parseFloat(denoms.coins) || 0);
+      setPhysicalCash(total.toFixed(2));
+  };
+
+  useEffect(() => {
+      if (showDenominations) updateFromDenoms();
+  }, [denoms]);
 
   const handleExportCSV = () => {
       // Headers
@@ -274,52 +303,93 @@ const Ledger: React.FC<LedgerProps> = ({ sales }) => {
 
                   {!submitted ? (
                     <form onSubmit={handleSubmitClose} className="space-y-6 animate-fade-in">
-                        <div className="relative">
-                          <label className="block text-white text-sm font-bold uppercase mb-2 flex items-center gap-2">
-                              <DollarSign size={16} className="text-cyber-green"/> Closing Cash Count
-                          </label>
-                          <div className="flex items-center relative">
+                        {/* Denominations Toggle */}
+                        <div className="flex justify-between items-center">
+                            <label className="text-white text-sm font-bold uppercase flex items-center gap-2">
+                                <DollarSign size={16} className="text-cyber-green"/> Closing Cash Count
+                            </label>
+                            <button 
+                                type="button"
+                                onClick={() => setShowDenominations(!showDenominations)}
+                                className="text-[10px] text-cyber-gold uppercase font-bold flex items-center gap-1 hover:text-white"
+                            >
+                                <Calculator size={12}/> {showDenominations ? 'Hide Helper' : 'Count by Bills'}
+                            </button>
+                        </div>
+
+                        {/* Bill Counter Slide-down */}
+                        {showDenominations && (
+                            <div className="bg-black/40 p-4 rounded-xl border border-white/10 animate-slide-in">
+                                <div className="grid grid-cols-3 gap-3 mb-2">
+                                    {['100', '50', '20'].map(d => (
+                                        <div key={d}>
+                                            <label className="text-[9px] text-gray-500 font-bold block mb-1">${d} Bills</label>
+                                            <input 
+                                                type="number" placeholder="0" 
+                                                value={denoms[`d${d}` as keyof typeof denoms]} 
+                                                onChange={e => setDenoms({...denoms, [`d${d}`]: e.target.value})}
+                                                className="w-full bg-white/5 border border-white/10 rounded p-1 text-center text-white text-sm outline-none font-mono"
+                                            />
+                                        </div>
+                                    ))}
+                                    {['10', '5', 'Coins'].map(d => (
+                                        <div key={d}>
+                                            <label className="text-[9px] text-gray-500 font-bold block mb-1">{d === 'Coins' ? 'Total Coins' : `$${d} Bills`}</label>
+                                            <input 
+                                                type="number" placeholder="0" 
+                                                value={d === 'Coins' ? denoms.coins : denoms[`d${d}` as keyof typeof denoms]} 
+                                                onChange={e => d === 'Coins' ? setDenoms({...denoms, coins: e.target.value}) : setDenoms({...denoms, [`d${d}`]: e.target.value})}
+                                                className="w-full bg-white/5 border border-white/10 rounded p-1 text-center text-white text-sm outline-none font-mono"
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="flex items-center relative">
                              <span className="absolute left-4 text-gray-500 text-xl">$</span>
                              <input 
                                 type="number" step="0.01" required
                                 value={physicalCash} onChange={e => setPhysicalCash(e.target.value)}
                                 className="w-full bg-black/60 border border-white/20 rounded-xl py-4 pl-10 pr-4 text-3xl font-mono text-white outline-none focus:border-cyber-green transition-all"
                                 placeholder="0.00"
+                                readOnly={showDenominations} // Lock manual input if using helper
                              />
-                          </div>
-                          <p className="text-[10px] text-gray-500 mt-2">Enter the total physical cash currently in the register.</p>
                         </div>
+                        
+                        <p className="text-[10px] text-gray-500 mt-2">Enter the total physical cash currently in the register.</p>
 
                         <button className="w-full bg-gradient-to-r from-cyber-gold to-yellow-600 text-black font-black text-xl py-4 rounded-xl hover:scale-[1.02] transition-all flex items-center justify-center gap-2 uppercase tracking-widest shadow-lg shadow-cyber-gold/20">
-                          <Save /> Verify & Close
+                          <Save size={24} /> Close & Reconcile
                         </button>
                     </form>
                   ) : (
-                    <div className="animate-slide-in">
-                        <div className={`p-6 rounded-2xl border-2 ${Math.abs(cashVariance) < 0.05 ? 'border-cyber-green bg-cyber-green/10' : cashVariance < 0 ? 'border-cyber-red bg-cyber-red/10' : 'border-cyber-gold bg-cyber-gold/10'}`}>
-                           <div className="flex justify-between items-start mb-2">
-                               <span className="text-sm uppercase font-bold tracking-widest opacity-80">
-                                   {Math.abs(cashVariance) < 0.05 ? 'Perfectly Balanced' : cashVariance < 0 ? 'Shortage Detected' : 'Overage Detected'}
-                               </span>
-                               {Math.abs(cashVariance) < 0.05 ? <CheckCircle size={24}/> : <AlertTriangle size={24}/>}
-                           </div>
-                           
-                           <div className="text-center py-4">
-                               <span className="text-xs text-gray-400 uppercase font-bold block mb-1">Final Variance</span>
-                               <span className={`text-5xl font-mono font-black ${cashVariance < 0 ? 'text-cyber-red' : 'text-cyber-green'}`}>
-                                 {cashVariance > 0 ? '+' : ''}{cashVariance.toFixed(2)}
-                               </span>
-                           </div>
+                    <div className="animate-slide-in text-center">
+                        <div className="mb-6 flex justify-center">
+                            {Math.abs(cashVariance) < 1 ? (
+                                <CheckCircle size={80} className="text-cyber-green" />
+                            ) : (
+                                <AlertTriangle size={80} className="text-red-500" />
+                            )}
                         </div>
                         
-                        <div className="mt-6 flex justify-center gap-4">
-                            <button onClick={() => setSubmitted(false)} className="text-xs text-gray-400 hover:text-white underline">
-                                Recount
-                            </button>
-                            <button onClick={handleEndShift} className="text-xs text-cyber-gold hover:text-white underline font-bold">
-                                Finalize & Start New Day
-                            </button>
+                        <h3 className="text-white font-bold text-2xl uppercase tracking-wider mb-2">Shift Closed</h3>
+                        <p className="text-gray-400 text-sm mb-6">Reconciliation Report Generated</p>
+                        
+                        <div className="bg-black/40 rounded-xl p-6 border border-white/10 mb-6">
+                            <div className="text-xs text-gray-500 uppercase font-bold mb-2">Variance Check</div>
+                            <div className={`text-4xl font-mono font-bold ${Math.abs(cashVariance) < 1 ? 'text-cyber-green' : 'text-red-500'}`}>
+                                {cashVariance >= 0 ? '+' : ''}{cashVariance.toFixed(2)}
+                            </div>
+                            <div className="text-[10px] text-gray-400 mt-2">
+                                {Math.abs(cashVariance) < 1 ? 'PERFECT BALANCE' : 'DISCREPANCY DETECTED'}
+                            </div>
                         </div>
+
+                        <button onClick={() => setSubmitted(false)} className="text-gray-500 hover:text-white underline text-xs">
+                            Correct Count
+                        </button>
                     </div>
                   )}
               </div>

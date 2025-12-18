@@ -1,643 +1,222 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Batch, Customer } from '../types';
-import { useData } from '../DataContext';
-import { ShoppingCart, Users, DollarSign, Scale, Calculator, RefreshCw, Eye, EyeOff, Sparkles, ChevronRight, UserCircle, MessageSquare, Anchor, ShieldAlert, Zap, AlertCircle, Link2, Link2Off, CheckCircle, X, Award, Star } from 'lucide-react';
+import { useAppStore } from '../stores/useAppStore';
+import { ShoppingCart, Users, DollarSign, Scale, Calculator, RefreshCw, Eye, EyeOff, Sparkles, ChevronRight, UserCircle, AlertCircle, Link2, Link2Off, CheckCircle, CheckCircle2, X, Award, Star, Zap, CreditCard, Wallet, ShieldAlert, Target, TrendingDown, TrendingUp, Crown, Trophy, User, Medal, Percent } from 'lucide-react';
+import { PrestigeBadge } from './Customers';
 
-interface POSProps {
-  batches: Batch[];
-  customers: Customer[];
-  onProcessSale: (batchId: string, customerId: string, salesRep: string, weight: number, amount: number, profit: number) => void;
-}
+// Robust Math Helper
+const round = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100;
 
-const POS: React.FC<POSProps> = ({ batches, customers, onProcessSale }) => {
-  const { settings, stagedTransaction, stageTransaction, posState, updatePOSState } = useData();
+const HaggleWidget = ({ costBasis, currentPrice, targetPrice, authorizedDiscountPct }: { costBasis: number, currentPrice: number, targetPrice: number, authorizedDiscountPct: number }) => {
+    const floorPrice = costBasis * 1.15;
+    const maxPrice = targetPrice * 1.2; 
+    const range = maxPrice - costBasis;
+    const authorizedPrice = targetPrice * (1 - (authorizedDiscountPct / 100));
+    const currentPercent = range > 0 ? Math.min(100, Math.max(0, ((currentPrice - costBasis) / range) * 100)) : 0;
+    const floorPercent = range > 0 ? ((floorPrice - costBasis) / range) * 100 : 0;
+    const targetPercent = range > 0 ? ((targetPrice - costBasis) / range) * 100 : 100;
+    const authPercent = range > 0 ? ((authorizedPrice - costBasis) / range) * 100 : 50;
+
+    let zoneColor = 'bg-gray-500', zoneText = 'ANALYZING';
+    if (currentPrice < costBasis) { zoneColor = 'bg-red-600'; zoneText = 'LOSS LEADER'; }
+    else if (currentPrice < floorPrice) { zoneColor = 'bg-red-400'; zoneText = 'BELOW MARGIN'; }
+    else if (currentPrice < authorizedPrice) { zoneColor = 'bg-orange-500'; zoneText = 'EXCESSIVE DISCOUNT'; }
+    else if (currentPrice < targetPrice) { zoneColor = 'bg-cyber-green'; zoneText = 'AUTHORIZED DEAL'; }
+    else { zoneColor = 'bg-cyber-gold'; zoneText = 'PREMIUM'; }
+
+    return (
+        <div className="bg-black/40 border border-white/10 rounded-xl p-4 animate-fade-in">
+            <div className="flex justify-between items-center mb-2">
+                <span className="text-[10px] font-bold uppercase text-gray-400 flex items-center gap-1"><TrendingDown size={12}/> Negotiation Assistant</span>
+                <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded text-black ${zoneColor}`}>{zoneText}</span>
+            </div>
+            <div className="relative h-4 bg-gray-800 rounded-full mb-2 overflow-hidden">
+                <div className="absolute top-0 bottom-0 left-0 bg-red-900/50 border-r border-red-500" style={{ width: `${floorPercent}%` }}></div>
+                <div className="absolute top-0 bottom-0 bg-cyber-green/10 border-l border-cyber-green/50 border-r border-cyber-green/50" style={{ left: `${authPercent}%`, right: `${100 - targetPercent}%` }}></div>
+                <div className="absolute top-0 bottom-0 w-1 bg-white shadow-[0_0_10px_white] transition-all duration-300 z-10" style={{ left: `${currentPercent}%` }}></div>
+            </div>
+            <div className="flex justify-between text-[9px] font-mono text-gray-500">
+                <span>Cost: ${costBasis.toFixed(2)}</span>
+                <span className="text-cyber-green">Auth Floor: ${authorizedPrice.toFixed(2)} (-{authorizedDiscountPct.toFixed(1)}%)</span>
+                <span className="text-white">Target: ${targetPrice.toFixed(2)}</span>
+            </div>
+        </div>
+    );
+};
+
+const POS: React.FC = () => {
+  const { 
+    batches, customers, processSale, settings, stagedTransaction, stageTransaction, 
+    posState, updatePOSState, sales, inventoryTerms 
+  } = useAppStore(state => ({ ...state }));
   
   const [showProfitDetails, setShowProfitDetails] = useState(true);
-  const [isLinked, setIsLinked] = useState(true); // Default to linked calculator
-  const [isReadingScale, setIsReadingScale] = useState(false); // New Scale State
-  
-  // Receipt State
-  const [lastTransaction, setLastTransaction] = useState<{
-      batchName: string;
-      weight: number;
-      amount: number;
-      profit: number;
-      customerName: string;
-      newTotalSpent: number;
-      promotion?: 'GOLD' | 'PLATINUM' | null;
-  } | null>(null);
+  const [isLinked, setIsLinked] = useState(true); 
+  const [lastTransaction, setLastTransaction] = useState<any>(null);
 
-  // CONSUME STAGED TRANSACTION (From Profit Planner)
+  const staffMetrics = useMemo(() => {
+      return settings.staffMembers.map(staffName => {
+          const staffSales = sales.filter(s => s.salesRep === staffName);
+          const totalVariance = staffSales.reduce((acc, s) => acc + (s.variance || 0), 0);
+          const totalRevenue = staffSales.reduce((acc, s) => acc + s.amount, 0);
+          const level = Math.floor(Math.sqrt(totalRevenue / 100)) + 1;
+          return { name: staffName, variance: totalVariance, level };
+      });
+  }, [sales, settings.staffMembers]);
+
   useEffect(() => {
     if (stagedTransaction) {
         updatePOSState({
             batchId: stagedTransaction.batchId,
             weightInput: stagedTransaction.weight.toString(),
-            cashInput: stagedTransaction.amount.toFixed(2)
+            cashInput: stagedTransaction.amount.toFixed(2),
+            customerId: stagedTransaction.customerId || '',
         });
         stageTransaction(null);
     }
-  }, [stagedTransaction]);
+  }, [stagedTransaction, updatePOSState, stageTransaction]);
 
   const selectedBatch = batches.find(b => b.id === posState.batchId);
   const selectedCustomer = customers.find(c => c.id === posState.customerId);
 
-  // Auto-Sync Price Logic
+  const customerDiscountAuth = useMemo(() => {
+      if (!selectedCustomer) return 0;
+      const levelBonus = (selectedCustomer.level || 1) * 0.2;
+      const prestigeBonus = (selectedCustomer.prestige || 0) * 2.0;
+      return Math.min(30, levelBonus + prestigeBonus);
+  }, [selectedCustomer]);
+
   useEffect(() => {
     if (selectedBatch) {
         let batchPrice = settings.defaultPricePerGram;
-        
         if (posState.pricingTier === 'RETAIL') {
             batchPrice = selectedBatch.targetRetailPrice > 0 ? selectedBatch.targetRetailPrice : settings.defaultPricePerGram;
         } else {
-             // Wholesale Logic
             batchPrice = selectedBatch.wholesalePrice > 0 ? selectedBatch.wholesalePrice : settings.defaultWholesalePrice;
         }
-
-        // Only update target price if it changed to prevent loop
+        
         if (batchPrice !== posState.targetPrice) {
             updatePOSState({ targetPrice: batchPrice });
-        }
-    } else {
-        if (posState.targetPrice !== settings.defaultPricePerGram) {
-            updatePOSState({ targetPrice: settings.defaultPricePerGram });
+            if (isLinked && posState.weightInput) {
+                const w = parseFloat(posState.weightInput);
+                if (!isNaN(w)) updatePOSState({ cashInput: round(w * batchPrice).toFixed(2) });
+            }
         }
     }
-  }, [posState.batchId, posState.pricingTier, settings.defaultPricePerGram, settings.defaultWholesalePrice]);
-
-  // --- BIDIRECTIONAL CALCULATOR LOGIC ---
+  }, [posState.batchId, posState.pricingTier, settings, selectedBatch, isLinked, posState.weightInput, posState.targetPrice, updatePOSState]);
 
   const handleCashChange = (val: string) => {
-    const updates: any = { cashInput: val };
-    
-    // If linked, auto-calculate weight based on cash / price
+    updatePOSState({ cashInput: val });
     if (isLinked) {
         const cash = parseFloat(val);
-        if (!isNaN(cash) && posState.targetPrice > 0) {
-            updates.weightInput = (cash / posState.targetPrice).toFixed(2);
-        } else if (val === '') {
-            updates.weightInput = '';
-        }
+        if (!isNaN(cash) && posState.targetPrice > 0) updatePOSState({ weightInput: round(cash / posState.targetPrice).toString() });
+        else if (val === '') updatePOSState({ weightInput: '' });
     }
-    updatePOSState(updates);
   };
 
   const handleWeightChange = (val: string) => {
-    const updates: any = { weightInput: val };
-
-    // If linked, auto-calculate cash based on weight * price
+    updatePOSState({ weightInput: val });
     if (isLinked) {
         const weight = parseFloat(val);
-        if (!isNaN(weight)) {
-            updates.cashInput = (weight * posState.targetPrice).toFixed(2);
-        } else if (val === '') {
-            updates.cashInput = '';
-        }
+        if (!isNaN(weight)) updatePOSState({ cashInput: round(weight * posState.targetPrice).toFixed(2) });
+        else if (val === '') updatePOSState({ cashInput: '' });
     }
-    updatePOSState(updates);
+  };
+
+  const handlePriceChange = (val: string) => {
+      const newPrice = parseFloat(val);
+      if (isNaN(newPrice)) return;
+      updatePOSState({ targetPrice: newPrice });
+      const weight = parseFloat(posState.weightInput);
+      if (!isNaN(weight)) updatePOSState({ cashInput: round(weight * newPrice).toFixed(2) });
   };
 
   const setPreset = (grams: number) => {
-    const cash = (grams * posState.targetPrice).toFixed(2);
-    // Presets always force a sync regardless of link state initially
+    const cash = round(grams * posState.targetPrice).toFixed(2);
     updatePOSState({ weightInput: grams.toString(), cashInput: cash });
   };
 
-  // SCALE SIMULATOR
-  const simulateScale = () => {
-      setIsReadingScale(true);
-      const target = parseFloat(posState.weightInput) || 3.5;
-      let count = 0;
-      const interval = setInterval(() => {
-          count++;
-          // Generate random jitter around target or random number if empty
-          const jitter = (Math.random() - 0.5) * 2;
-          const val = target > 0 ? target + jitter : Math.random() * 10;
-          updatePOSState({ weightInput: Math.abs(val).toFixed(2) });
-          
-          if (count > 10) {
-              clearInterval(interval);
-              setIsReadingScale(false);
-              // Settle on clean number
-              updatePOSState({ weightInput: target.toFixed(2) });
-              // Trigger sync if linked
-              if (isLinked) {
-                  const cash = (target * posState.targetPrice).toFixed(2);
-                  updatePOSState({ cashInput: cash });
-              }
-          }
-      }, 80);
-  };
-
   const handleCompleteSale = () => {
-    if (!selectedBatch || !selectedCustomer) return;
-    
-    if (!posState.customerId) {
-        alert("Please select a customer to track metrics."); 
-        return;
-    }
-
+    if (!selectedBatch) return;
+    const finalCustomerId = posState.customerId || 'WALK_IN';
+    const effectiveCustomer = customers.find(c => c.id === finalCustomerId);
     const weight = parseFloat(posState.weightInput);
     const amount = parseFloat(posState.cashInput);
     
-    if (isNaN(weight) || isNaN(amount) || weight <= 0) return;
-
-    if (weight > selectedBatch.currentStock) {
-      alert("Insufficient stock!");
-      return;
-    }
+    if (isNaN(weight) || isNaN(amount) || weight <= 0 || !effectiveCustomer) return;
+    if (weight > selectedBatch.currentStock) { alert("Insufficient stock!"); return; }
 
     const costBasis = weight * selectedBatch.trueCostPerGram;
     const profit = amount - costBasis;
 
-    // Detect Level Up
-    const prevTotal = selectedCustomer.totalSpent;
-    const newTotal = prevTotal + amount;
-    let promotion: 'GOLD' | 'PLATINUM' | null = null;
-    if (prevTotal < 500 && newTotal >= 500) promotion = 'GOLD';
-    if (prevTotal < 1000 && newTotal >= 1000) promotion = 'PLATINUM';
-
-    // Process Sale
-    onProcessSale(selectedBatch.id, posState.customerId, posState.salesRep, weight, amount, profit);
-
-    // Show Receipt Modal
-    setLastTransaction({
-        batchName: selectedBatch.name,
-        weight,
-        amount,
-        profit,
-        customerName: selectedCustomer.name,
-        newTotalSpent: newTotal,
-        promotion
-    });
+    processSale(selectedBatch.id, finalCustomerId, posState.salesRep, weight, amount, profit, posState.targetPrice, posState.paymentMethod);
+    setLastTransaction({ batchName: selectedBatch.name, weight, amount, profit, customerName: effectiveCustomer.name });
   };
 
-  // RECOMMENDATION ENGINE LOGIC
   const getRecommendedBatches = () => {
       const activeBatches = batches.filter(b => b.currentStock > 0);
       if (!selectedCustomer || !selectedCustomer.psychProfile) return activeBatches.slice(0, 3);
-
       const archetype = selectedCustomer.psychProfile.primary;
-      
-      if (['Optimiser', 'Analyst', 'Minimalist'].includes(archetype)) {
-          return [...activeBatches].sort((a,b) => {
-              const markupA = a.targetRetailPrice / a.trueCostPerGram;
-              const markupB = b.targetRetailPrice / b.trueCostPerGram;
-              return markupA - markupB;
-          }).slice(0, 3);
-      } 
-      else if (['Impulsive', 'Opportunist', 'Reactor'].includes(archetype)) {
-          return [...activeBatches].sort((a,b) => b.targetRetailPrice - a.targetRetailPrice).slice(0, 3);
-      }
-      else {
-          return [...activeBatches].sort((a,b) => b.currentStock - a.currentStock).slice(0, 3);
-      }
+      if (['Optimiser', 'Analyst', 'Minimalist'].includes(archetype)) return [...activeBatches].sort((a,b) => (a.targetRetailPrice / a.trueCostPerGram) - (b.targetRetailPrice / b.trueCostPerGram)).slice(0, 3);
+      else if (['Impulsive', 'Opportunist', 'Reactor'].includes(archetype)) return [...activeBatches].sort((a,b) => b.targetRetailPrice - a.targetRetailPrice).slice(0, 3);
+      else return [...activeBatches].sort((a,b) => b.currentStock - a.currentStock).slice(0, 3);
   };
 
   const recommendedBatches = getRecommendedBatches();
-
-  // Derived Profit display
   const currentWeight = parseFloat(posState.weightInput) || 0;
   const currentAmount = parseFloat(posState.cashInput) || 0;
-  const expectedAmount = currentWeight * posState.targetPrice;
-  // Short calculation only relevant if Unlinked
-  const isShort = !isLinked && (currentAmount < expectedAmount - 0.05); 
-  
+  const expectedAmount = round(currentWeight * posState.targetPrice);
+  const mathDiff = round(currentAmount - expectedAmount);
+  const isShort = mathDiff < -0.05;
+  const isOver = mathDiff > 0.05;
   const estimatedCost = selectedBatch ? currentWeight * selectedBatch.trueCostPerGram : 0;
   const projectedProfit = currentAmount - estimatedCost;
-  const marginPercent = currentAmount > 0 ? (projectedProfit / currentAmount) * 100 : 0;
+  const profitMarginPercent = currentAmount > 0 ? (projectedProfit / currentAmount) * 100 : 0;
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full relative">
-      
-      {/* TRANSACTION RECEIPT MODAL */}
-      {lastTransaction && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
-              <div className={`bg-cyber-panel border rounded-2xl w-full max-w-md p-0 overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.5)] ${lastTransaction.promotion ? 'border-cyber-purple shadow-[0_0_100px_rgba(99,102,241,0.5)] scale-105' : 'border-cyber-gold shadow-[0_0_50px_rgba(212,175,55,0.3)]'}`}>
-                  
-                  {/* HEADER */}
-                  <div className={`${lastTransaction.promotion ? 'bg-gradient-to-r from-cyber-purple to-pink-600' : 'bg-cyber-gold'} text-black p-4 flex justify-between items-center relative overflow-hidden`}>
-                      {lastTransaction.promotion && (
-                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                              <Sparkles size={200} className="text-white opacity-20 animate-spin-slow"/>
-                          </div>
-                      )}
-                      <h3 className="font-black uppercase tracking-widest text-lg flex items-center gap-2 relative z-10">
-                          {lastTransaction.promotion ? (
-                              <> <Award size={24} className="animate-bounce"/> LEVEL UP! </>
-                          ) : (
-                              <> <CheckCircle size={24}/> Transaction Complete </>
-                          )}
-                      </h3>
-                      <button onClick={() => setLastTransaction(null)} className="hover:bg-black/20 p-1 rounded-full relative z-10"><X size={20}/></button>
-                  </div>
-
-                  <div className="p-8 font-mono space-y-4 relative">
-                      
-                      {lastTransaction.promotion && (
-                          <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center opacity-10">
-                              <Star size={300} className="text-cyber-purple animate-pulse"/>
-                          </div>
-                      )}
-
-                      {lastTransaction.promotion && (
-                          <div className="text-center bg-white/10 p-4 rounded-xl border border-white/20 mb-4 animate-slide-in">
-                              <div className="text-cyber-purple text-xs font-bold uppercase tracking-widest mb-1">Customer Promoted To</div>
-                              <div className="text-3xl text-white font-black uppercase tracking-tighter drop-shadow-lg">
-                                  {lastTransaction.promotion} TIER
-                              </div>
-                              <div className="text-[10px] text-gray-300 mt-1">Unlock associated benefits immediately.</div>
-                          </div>
-                      )}
-
-                      <div className="text-center pb-4 border-b border-white/10">
-                          <div className="text-gray-400 text-xs uppercase mb-1">Total Received</div>
-                          <div className="text-4xl text-white font-bold tracking-tighter">${lastTransaction.amount.toFixed(2)}</div>
-                      </div>
-                      
-                      <div className="space-y-2 text-sm relative z-10">
-                          <div className="flex justify-between">
-                              <span className="text-gray-500">Customer</span>
-                              <span className="text-white font-bold">{lastTransaction.customerName}</span>
-                          </div>
-                          <div className="flex justify-between">
-                              <span className="text-gray-500">Item</span>
-                              <span className="text-white">{lastTransaction.batchName}</span>
-                          </div>
-                          <div className="flex justify-between">
-                              <span className="text-gray-500">Quantity</span>
-                              <span className="text-white">{lastTransaction.weight.toFixed(2)}g</span>
-                          </div>
-                      </div>
-
-                      <div className="bg-white/5 p-4 rounded-xl border border-white/10 mt-4 relative z-10">
-                          <div className="flex justify-between items-center mb-1">
-                              <span className="text-xs text-cyber-green uppercase font-bold">Net Profit</span>
-                              <span className="text-xl text-cyber-green font-bold">+${lastTransaction.profit.toFixed(2)}</span>
-                          </div>
-                          <div className="w-full bg-gray-800 h-1.5 rounded-full mt-2 overflow-hidden">
-                              <div className="bg-cyber-gold h-full transition-all duration-1000" style={{ width: `${Math.min(100, (lastTransaction.newTotalSpent % 500) / 500 * 100)}%` }}></div>
-                          </div>
-                          <div className="text-[10px] text-center text-gray-500 mt-1 uppercase tracking-widest">
-                              Loyalty Progress
-                          </div>
-                      </div>
-
-                      <button onClick={() => setLastTransaction(null)} className="w-full bg-white/10 hover:bg-white/20 text-white font-bold py-3 rounded-xl uppercase tracking-widest text-sm transition-all relative z-10">
-                          Return to Terminal
-                      </button>
-                  </div>
-              </div>
-          </div>
-      )}
-
-      {/* LEFT: Controls */}
-      <div className="lg:col-span-2 space-y-6">
-        
-        {/* Batch Selection */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-cyber-panel border border-white/10 rounded-xl p-4">
-                <label className="flex items-center gap-2 text-gray-400 text-sm mb-2 uppercase font-bold tracking-wider">
-                    <UserCircle size={14} /> Sales Agent
-                </label>
-                <select 
-                    className="w-full bg-black/50 border border-white/10 rounded-lg p-3 text-white outline-none focus:border-cyber-gold"
-                    value={posState.salesRep}
-                    onChange={(e) => updatePOSState({ salesRep: e.target.value })}
-                >
-                    {settings.staffMembers.map(staff => (
-                        <option key={staff} value={staff}>{staff}</option>
-                    ))}
-                </select>
-            </div>
-
-            <div className="bg-cyber-panel border border-white/10 rounded-xl p-4">
-                <label className="flex items-center gap-2 text-gray-400 text-sm mb-2 uppercase font-bold tracking-wider">
-                    <ShoppingCart size={14} /> Active Batch
-                </label>
-                <select 
-                    className="w-full bg-black/50 border border-white/10 rounded-lg p-3 text-white outline-none focus:border-cyber-gold"
-                    value={posState.batchId}
-                    onChange={(e) => updatePOSState({ batchId: e.target.value })}
-                >
-                    <option value="">-- Select Inventory --</option>
-                    {batches.filter(b => b.currentStock > 0).map(b => (
-                        <option key={b.id} value={b.id}>
-                            {b.name} ({b.currentStock.toFixed(1)}g avail)
-                        </option>
-                    ))}
-                </select>
-            </div>
-
-            <div className="bg-cyber-panel border border-white/10 rounded-xl p-4">
-                <label className="flex items-center gap-2 text-gray-400 text-sm mb-2 uppercase font-bold tracking-wider">
-                    <Users size={14} /> Customer
-                </label>
-                <select 
-                    className="w-full bg-black/50 border border-white/10 rounded-lg p-3 text-white outline-none focus:border-cyber-gold"
-                    value={posState.customerId}
-                    onChange={(e) => updatePOSState({ customerId: e.target.value })}
-                >
-                    <option value="">-- Select Customer --</option>
-                    {customers.map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                </select>
-            </div>
-        </div>
-
-        {/* The Calculator Core */}
-        <div className="bg-cyber-panel border border-white/10 rounded-2xl p-6 relative overflow-hidden backdrop-blur-xl shadow-[0_0_30px_rgba(0,0,0,0.5)]">
-             <div className="absolute top-0 right-0 p-4 opacity-5">
-                <Calculator size={150} />
-             </div>
-
-             {/* Rate Adjuster */}
-             <div className="flex justify-between items-center mb-6 border-b border-white/5 pb-4 relative z-10">
-                <div className="flex items-center gap-4">
-                     <div className="flex bg-black/50 rounded-lg p-1 border border-white/10">
-                         <button 
-                            onClick={() => updatePOSState({ pricingTier: 'RETAIL' })}
-                            className={`px-3 py-1 rounded text-xs font-bold uppercase transition-all ${posState.pricingTier === 'RETAIL' ? 'bg-cyber-green text-black' : 'text-gray-500 hover:text-white'}`}
-                         >
-                             Retail
-                         </button>
-                         <button 
-                            onClick={() => updatePOSState({ pricingTier: 'WHOLESALE' })}
-                            className={`px-3 py-1 rounded text-xs font-bold uppercase transition-all ${posState.pricingTier === 'WHOLESALE' ? 'bg-cyber-gold text-black' : 'text-gray-500 hover:text-white'}`}
-                         >
-                             Wholesale
-                         </button>
-                     </div>
-                </div>
-                <div className="flex items-center gap-2">
-                    <span className={`text-xl font-bold ${posState.pricingTier === 'RETAIL' ? 'text-cyber-green' : 'text-cyber-gold'}`}>$</span>
-                    <input 
-                        type="number" 
-                        value={posState.targetPrice}
-                        onChange={(e) => {
-                            const val = parseFloat(e.target.value) || 0;
-                            updatePOSState({ targetPrice: val });
-                        }}
-                        className={`bg-transparent border-b w-24 text-center font-mono text-2xl text-white outline-none ${posState.pricingTier === 'RETAIL' ? 'border-cyber-green' : 'border-cyber-gold'}`}
-                    />
-                    <span className="text-gray-400 text-sm">/ gram</span>
-                </div>
-             </div>
-
-             {/* Bi-Directional Inputs */}
-             <div className="flex items-center gap-4 mb-8 relative z-10">
-                <div className="space-y-2 flex-1">
-                    <label className="flex items-center gap-2 text-cyber-green font-bold uppercase text-sm">
-                        <DollarSign size={16} /> Cash In
-                    </label>
-                    <div className="relative">
-                        <input 
-                            type="number" 
-                            value={posState.cashInput}
-                            onChange={(e) => handleCashChange(e.target.value)}
-                            placeholder="0.00"
-                            className={`w-full bg-black/60 border rounded-xl p-4 text-4xl font-mono text-white outline-none transition-all ${isShort ? 'border-red-500 focus:border-red-500' : 'border-cyber-green/30 focus:border-cyber-green'}`}
-                        />
-                        {isShort && (
-                            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-red-500 flex items-center gap-1 text-xs font-bold uppercase bg-black/80 px-2 py-1 rounded border border-red-500/30">
-                                <AlertCircle size={12}/> Short
-                            </span>
-                        )}
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full relative animate-fade-in">
+        {lastTransaction && (
+             <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4" onClick={() => setLastTransaction(null)}>
+                <div className="bg-gradient-to-br from-cyber-panel to-black border-2 border-cyber-green shadow-[0_0_100px_rgba(16,185,129,0.3)] rounded-3xl w-full max-w-md p-8 text-center relative overflow-hidden">
+                    <CheckCircle2 size={64} className="text-cyber-green mx-auto mb-6 animate-pulse"/>
+                    <h2 className="text-3xl font-black text-white uppercase tracking-widest mb-2">Transaction Complete</h2>
+                    <p className="text-gray-400 text-sm mb-8">Ledger updated. Inventory adjusted.</p>
+                    <div className="bg-black/50 rounded-xl p-6 space-y-4 text-left border border-white/10">
+                        <div className="flex justify-between"><span className="text-gray-500">Client</span><span className="text-white font-bold">{lastTransaction.customerName}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-500">Asset</span><span className="text-white font-bold">{lastTransaction.batchName}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-500">Volume</span><span className="text-white font-bold">{lastTransaction.weight}{inventoryTerms.unit}</span></div>
+                        <div className="flex justify-between font-bold text-xl border-t border-white/10 pt-4 mt-4"><span className="text-gray-400">TOTAL</span><span className="text-cyber-green">${lastTransaction.amount.toFixed(2)}</span></div>
                     </div>
+                     <button className="mt-8 text-gray-500 text-xs uppercase font-bold tracking-widest hover:text-white">Click anywhere to close</button>
                 </div>
-
-                {/* LINK / UNLINK TOGGLE */}
-                <div className="flex flex-col items-center pt-6 gap-2">
-                    <button 
-                        onClick={() => setIsLinked(!isLinked)}
-                        className={`p-3 rounded-full border transition-all ${isLinked ? 'bg-cyber-gold text-black border-cyber-gold shadow-[0_0_15px_rgba(212,175,55,0.4)]' : 'bg-white/5 text-gray-500 border-white/10 hover:text-white'}`}
-                        title={isLinked ? "Calculator Linked: Auto-updates" : "Unlinked: Manual Override Allowed"}
-                    >
-                        {isLinked ? <Link2 size={20}/> : <Link2Off size={20}/>}
-                    </button>
-                    <span className="text-[9px] uppercase font-bold text-gray-500">{isLinked ? 'SYNC' : 'MANUAL'}</span>
-                </div>
-
-                <div className="space-y-2 flex-1">
-                    <div className="flex justify-between items-center">
-                        <label className="flex items-center gap-2 text-cyber-purple font-bold uppercase text-sm">
-                            <Scale size={16} /> Weight Out (g)
-                        </label>
-                        <button 
-                            onClick={simulateScale} 
-                            className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded border border-cyber-purple/30 ${isReadingScale ? 'text-cyber-purple bg-cyber-purple/20 animate-pulse' : 'text-gray-500 hover:text-white'}`}
-                        >
-                            {isReadingScale ? 'Reading...' : 'Read Scale'}
-                        </button>
-                    </div>
-                    <input 
-                        type="number" 
-                        value={posState.weightInput}
-                        onChange={(e) => handleWeightChange(e.target.value)}
-                        placeholder="0.00"
-                        className={`w-full bg-black/60 border rounded-xl p-4 text-4xl font-mono text-white outline-none focus:border-cyber-purple focus:shadow-[0_0_25px_rgba(99,102,241,0.2)] transition-all ${isReadingScale ? 'animate-pulse text-cyber-purple' : ''}`}
-                    />
-                </div>
-             </div>
-
-             {/* Quick Presets */}
-             <div className="grid grid-cols-4 md:grid-cols-8 gap-2 mb-6 relative z-10">
-                 {[0.25, 0.5, 1.0, 3.5, 7.0, 14.0, 28.0].map(w => (
-                     <button 
-                        key={w}
-                        onClick={() => setPreset(w)}
-                        className="bg-white/5 hover:bg-cyber-gold hover:text-black border border-white/10 hover:border-cyber-gold rounded-lg py-3 font-mono text-xs font-bold transition-all"
-                     >
-                        {w}g
-                     </button>
-                 ))}
-                 <button 
-                    onClick={() => updatePOSState({ cashInput: '', weightInput: '' })}
-                    className="bg-red-500/10 hover:bg-red-500 hover:text-white border border-red-500/30 rounded-lg py-3 flex items-center justify-center transition-all"
-                 >
-                    <RefreshCw size={14} />
-                 </button>
-             </div>
-
-             {/* Profit Preview Breakdown */}
-             {selectedBatch && currentAmount > 0 && (
-                 <div className="bg-black/30 rounded-xl p-4 border border-white/5 relative z-10 animate-fade-in">
-                    <div className="flex justify-between items-center mb-4">
-                        <h4 className="text-[10px] text-gray-500 uppercase font-bold tracking-widest flex items-center gap-2">
-                             <Zap size={10} className="text-cyber-gold"/> Deal Analysis
-                        </h4>
-                        <button onClick={() => setShowProfitDetails(!showProfitDetails)} className="text-gray-500 hover:text-white">
-                            {showProfitDetails ? <Eye size={14} /> : <EyeOff size={14} />}
-                        </button>
-                    </div>
-                    
-                    {showProfitDetails ? (
-                        <div className="grid grid-cols-4 gap-4 text-center">
-                            <div className="bg-white/5 p-2 rounded">
-                                <div className="text-[9px] text-gray-500 uppercase font-bold mb-1">Amount Out</div>
-                                <div className="font-mono text-white font-bold">{currentWeight.toFixed(2)}g</div>
-                            </div>
-                            <div className="bg-white/5 p-2 rounded">
-                                <div className="text-[9px] text-gray-500 uppercase font-bold mb-1">At Cost</div>
-                                <div className="font-mono text-gray-400 font-bold">${estimatedCost.toFixed(2)}</div>
-                            </div>
-                            <div className="bg-white/5 p-2 rounded">
-                                <div className="text-[9px] text-gray-500 uppercase font-bold mb-1">Resale Value</div>
-                                <div className="font-mono text-cyber-gold font-bold">${currentAmount.toFixed(2)}</div>
-                            </div>
-                            <div className="bg-white/5 p-2 rounded border border-white/5">
-                                <div className="text-[9px] text-gray-500 uppercase font-bold mb-1">Net Profit</div>
-                                <div className={`font-mono font-bold ${projectedProfit >= 0 ? 'text-cyber-green' : 'text-cyber-red'}`}>
-                                    ${projectedProfit.toFixed(2)}
-                                </div>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="text-center text-gray-500 text-sm py-2 italic">
-                            Financial details hidden
-                        </div>
-                    )}
-                 </div>
-             )}
-        </div>
-
-        <button 
-            onClick={handleCompleteSale}
-            disabled={!selectedBatch || !posState.customerId || currentAmount <= 0}
-            className="w-full bg-gradient-to-r from-cyber-gold to-yellow-600 text-black font-black text-xl py-5 rounded-xl uppercase tracking-[0.2em] hover:brightness-110 hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all shadow-[0_0_30px_rgba(212,175,55,0.2)]"
-        >
-            Execute Sale
-        </button>
-      </div>
-
-      {/* RIGHT: Context Info */}
-      <div className="space-y-6">
-        
-        {selectedCustomer ? (
-            <>
-                <div className="bg-cyber-panel border border-white/10 rounded-xl p-6 relative overflow-hidden">
-                     {/* Tier Badge Background */}
-                     <div className="absolute top-0 right-0 p-4 opacity-5 font-black text-6xl text-white select-none">
-                         {selectedCustomer.totalSpent > 1000 ? 'PLT' : selectedCustomer.totalSpent > 500 ? 'GLD' : 'SLV'}
-                     </div>
-
-                     <h3 className="text-gray-400 uppercase text-xs font-bold mb-4 flex items-center gap-2"><UserCircle size={14}/> Target Identity</h3>
-                     <div className="flex items-center gap-4 mb-4 relative z-10">
-                        {selectedCustomer.avatarImage ? (
-                            <img src={selectedCustomer.avatarImage} className="w-14 h-14 rounded-full border-2 border-cyber-gold object-cover shadow-[0_0_15px_rgba(212,175,55,0.4)]" />
-                        ) : (
-                            <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-cyber-purple to-blue-500 flex items-center justify-center font-bold text-xl shadow-lg border border-white/20">
-                                {selectedCustomer.name.substring(0,2).toUpperCase()}
-                            </div>
-                        )}
-                        <div>
-                            <div className="text-white font-bold text-lg leading-none">{selectedCustomer.name}</div>
-                            <div className="text-xs text-cyber-gold mt-1">
-                                {selectedCustomer.totalSpent > 1000 ? 'Platinum' : selectedCustomer.totalSpent > 500 ? 'Gold' : 'Silver'} Tier
-                            </div>
-                        </div>
-                     </div>
-                     
-                     {selectedCustomer.psychProfile ? (
-                         <div className="mt-4 space-y-3 relative z-10">
-                             {/* TACTICAL NEGOTIATION HUD */}
-                             <div className="bg-cyber-purple/10 border border-cyber-purple/30 rounded-lg p-3">
-                                <div className="flex justify-between items-center mb-2">
-                                    <span className="text-[10px] text-cyber-purple uppercase font-bold flex items-center gap-1"><Zap size={10}/> Tactical HUD</span>
-                                    <span className="text-[10px] text-white bg-cyber-purple/20 px-1.5 rounded">{selectedCustomer.psychProfile.primary}</span>
-                                </div>
-                                <div className="grid grid-cols-2 gap-2 mb-2">
-                                    <div className="bg-black/40 rounded p-2">
-                                        <div className="text-[9px] text-gray-400 uppercase mb-0.5 flex items-center gap-1"><Anchor size={8}/> Anchor</div>
-                                        <div className="text-xs text-white font-bold">{selectedCustomer.psychProfile.interactionStrategy.persuasionAnchor}</div>
-                                    </div>
-                                    <div className="bg-black/40 rounded p-2">
-                                        <div className="text-[9px] text-gray-400 uppercase mb-0.5 flex items-center gap-1"><MessageSquare size={8}/> Tone</div>
-                                        <div className="text-xs text-white font-bold">{selectedCustomer.psychProfile.interactionStrategy.tone}</div>
-                                    </div>
-                                </div>
-                                
-                                {selectedCustomer.psychProfile.interactionStrategy.avoid.length > 0 && (
-                                    <div className="text-[10px] text-red-300 bg-red-500/10 p-2 rounded border border-red-500/20 flex items-start gap-1">
-                                        <ShieldAlert size={10} className="mt-0.5 shrink-0"/>
-                                        <span>
-                                            <strong className="text-red-400 uppercase">Avoid:</strong> {selectedCustomer.psychProfile.interactionStrategy.avoid.slice(0, 2).join(", ")}
-                                        </span>
-                                    </div>
-                                )}
-                             </div>
-                         </div>
-                     ) : (
-                         <div className="text-center py-4 text-gray-500 text-xs italic">
-                             Run Behavioral Analysis in CRM to unlock tactical guidance.
-                         </div>
-                     )}
-                </div>
-
-                {/* RECOMMENDATION ENGINE */}
-                <div className="bg-cyber-panel border border-white/10 rounded-xl p-6 border-l-2 border-l-cyber-gold animate-fade-in">
-                    <h3 className="text-cyber-gold uppercase text-xs font-bold mb-4 flex items-center gap-2">
-                        <Sparkles size={14} /> Recommended
-                    </h3>
-                    <div className="space-y-3">
-                        {recommendedBatches.length > 0 ? recommendedBatches.map(b => (
-                            <div 
-                                key={b.id} 
-                                onClick={() => updatePOSState({ batchId: b.id })}
-                                className="bg-white/5 hover:bg-white/10 p-3 rounded-lg cursor-pointer transition-all group"
-                            >
-                                <div className="flex justify-between items-center">
-                                    <span className="text-sm font-bold text-gray-200 group-hover:text-white">{b.name}</span>
-                                    <ChevronRight size={14} className="text-gray-500 group-hover:text-cyber-gold"/>
-                                </div>
-                                <div className="flex justify-between mt-1">
-                                    <span className="text-[10px] text-gray-500">{b.strainType}</span>
-                                    <span className="text-xs font-mono text-cyber-green">${b.targetRetailPrice}/g</span>
-                                </div>
-                            </div>
-                        )) : (
-                            <div className="text-gray-500 text-xs italic text-center">No active inventory</div>
-                        )}
-                    </div>
-                </div>
-            </>
-        ) : (
-            <div className="bg-cyber-panel border border-white/10 rounded-xl p-6 flex items-center justify-center text-gray-500 h-32 border-dashed">
-                Select Customer Target
             </div>
         )}
-
-        {selectedBatch && (
-             <div className="bg-cyber-panel border border-white/10 rounded-xl p-6">
-                <h3 className="text-gray-400 uppercase text-xs font-bold mb-4">Batch Telemetry</h3>
-                <div className="space-y-4">
-                    <div className="flex justify-between items-end">
-                        <span className="text-white font-bold text-lg">{selectedBatch.name}</span>
-                        <span className={`text-xs px-2 py-0.5 rounded uppercase font-bold border ${selectedBatch.strainType === 'Rock' ? 'border-gray-500 text-gray-500' : 'border-cyan-400 text-cyan-400'}`}>{selectedBatch.strainType}</span>
-                    </div>
-                    
-                    <div className="w-full bg-gray-800 h-2 rounded-full overflow-hidden">
-                        <div 
-                            className={`h-full ${selectedBatch.currentStock < selectedBatch.actualWeight * 0.2 ? 'bg-cyber-red' : 'bg-cyber-green'}`} 
-                            style={{width: `${(selectedBatch.currentStock / selectedBatch.actualWeight) * 100}%`}} 
-                        />
-                    </div>
-                    
-                    <div className="flex justify-between text-sm font-mono border-t border-white/5 pt-3 mt-2">
-                        <div>
-                            <span className="text-gray-500 text-xs block">Current Stock</span>
-                            <span className="text-white font-bold">{selectedBatch.currentStock.toFixed(1)}g</span>
-                        </div>
-                        <div className="text-right">
-                            <span className="text-gray-500 text-xs block">Break Even</span>
-                            <span className="text-cyber-red font-bold">${selectedBatch.trueCostPerGram.toFixed(2)}/g</span>
-                        </div>
-                    </div>
+        <div className="lg:col-span-2 space-y-6">
+            <div className="grid grid-cols-2 gap-4">
+                <select value={posState.batchId} onChange={e => updatePOSState({ batchId: e.target.value })} className="w-full bg-cyber-panel border border-white/10 rounded-xl p-4 text-white font-bold outline-none focus:border-cyber-gold"><option value="">-- Select {inventoryTerms.strainLabel} --</option>{batches.filter(b=>b.currentStock > 0).map(b => <option key={b.id} value={b.id}>{b.name} ({b.currentStock.toFixed(1)}{inventoryTerms.unit})</option>)}</select>
+                <select value={posState.customerId} onChange={e => updatePOSState({ customerId: e.target.value })} className="w-full bg-cyber-panel border border-white/10 rounded-xl p-4 text-white font-bold outline-none focus:border-cyber-gold"><option value="">-- Select Client --</option>{customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+            </div>
+            <div className="bg-cyber-panel border border-white/10 rounded-2xl p-6 space-y-6">
+                <div className="flex justify-between items-center"><div className="text-xs uppercase font-bold text-gray-400">Transaction Details</div><div className="flex bg-black/40 rounded-lg p-1 border border-white/10"><button onClick={() => updatePOSState({ pricingTier: 'RETAIL' })} className={`px-3 py-1 text-[10px] rounded-md font-bold uppercase ${posState.pricingTier === 'RETAIL' ? 'bg-cyber-gold text-black' : 'text-gray-500'}`}>Retail</button><button onClick={() => updatePOSState({ pricingTier: 'WHOLESALE' })} className={`px-3 py-1 text-[10px] rounded-md font-bold uppercase ${posState.pricingTier === 'WHOLESALE' ? 'bg-cyber-purple text-white' : 'text-gray-500'}`}>Wholesale</button></div></div>
+                <div className="grid grid-cols-2 gap-6 items-end">
+                    <div><label className="text-sm font-bold text-white flex items-center gap-2 mb-2"><Scale size={16}/> {inventoryTerms.stockLabel}</label><div className="relative"><input type="number" step="0.1" value={posState.weightInput} onChange={e => handleWeightChange(e.target.value)} className="w-full bg-black/50 border border-white/20 rounded-xl p-4 text-3xl font-mono text-white outline-none focus:border-cyber-purple transition-all text-center" placeholder="0.0"/><span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 font-mono">{inventoryTerms.unit}</span></div></div>
+                    <div><label className="text-sm font-bold text-white flex items-center gap-2 mb-2"><DollarSign size={16}/> Price</label><div className="relative"><input type="number" step="0.01" value={posState.cashInput} onChange={e => handleCashChange(e.target.value)} className="w-full bg-black/50 border border-white/20 rounded-xl p-4 text-3xl font-mono text-white outline-none focus:border-cyber-green transition-all text-center" placeholder="0.00"/><span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-mono">$</span></div></div>
                 </div>
-             </div>
-        )}
-      </div>
+                <div className="flex justify-center items-center gap-4"><div className="flex-1 h-px bg-white/10"></div><button onClick={() => setIsLinked(!isLinked)} className={`p-2 rounded-full border transition-all ${isLinked ? 'bg-cyber-purple/20 border-cyber-purple text-cyber-purple' : 'bg-gray-700 border-gray-600 text-gray-400'}`}>{isLinked ? <Link2 size={16}/> : <Link2Off size={16}/>}</button><div className="flex-1 h-px bg-white/10"></div></div>
+                <div className="flex flex-wrap justify-center gap-2">{[1, 3.5, 7, 14, 28].map(w => <button key={w} onClick={() => setPreset(w)} className="bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2 rounded-lg text-xs font-bold text-gray-300 transition-all">{w}{inventoryTerms.unit}</button>)}</div>
+                {selectedBatch && <HaggleWidget costBasis={estimatedCost} currentPrice={currentAmount} targetPrice={expectedAmount} authorizedDiscountPct={customerDiscountAuth} />}
+            </div>
+            <div className="grid grid-cols-2 gap-4"><div className="flex bg-cyber-panel border border-white/10 rounded-xl p-1"><button onClick={()=>updatePOSState({paymentMethod:'CASH'})} className={`flex-1 flex items-center justify-center gap-2 p-3 text-sm font-bold rounded-lg ${posState.paymentMethod === 'CASH' ? 'bg-cyber-green text-black' : 'text-gray-400'}`}><Wallet size={16}/> Cash</button><button onClick={()=>updatePOSState({paymentMethod:'BANK'})} className={`flex-1 flex items-center justify-center gap-2 p-3 text-sm font-bold rounded-lg ${posState.paymentMethod === 'BANK' ? 'bg-cyber-purple text-white' : 'text-gray-400'}`}><CreditCard size={16}/> Bank</button></div><button onClick={handleCompleteSale} disabled={!selectedBatch || currentWeight <= 0} className="bg-cyber-gold text-black font-black text-lg p-4 rounded-xl uppercase tracking-widest hover:brightness-110 disabled:opacity-50 transition-all">Complete</button></div>
+        </div>
+
+        <div className="space-y-6">
+            <div className="bg-cyber-panel border border-white/10 rounded-2xl p-6">
+                <h3 className="text-xs uppercase font-bold text-gray-400 mb-4 flex justify-between items-center">Context HUD <button onClick={() => setShowProfitDetails(!showProfitDetails)} className="text-gray-500 hover:text-white">{showProfitDetails ? <EyeOff size={14}/> : <Eye size={14}/>}</button></h3>
+                {selectedCustomer ? (<div className="flex items-center gap-4 mb-6"><div className="relative"><div className="w-16 h-16 rounded-full bg-black/50 border-2 border-cyber-purple flex items-center justify-center">{selectedCustomer.avatarImage ? <img src={selectedCustomer.avatarImage} className="w-full h-full object-cover rounded-full"/> : <User size={32} className="text-cyber-purple"/>}</div>{selectedCustomer.prestige > 0 && <div className="absolute -bottom-2 -right-2"><PrestigeBadge prestige={selectedCustomer.prestige} size={32}/></div>}</div><div><h4 className="text-white font-bold text-lg">{selectedCustomer.name}</h4><div className="text-xs text-gray-400">Lvl {selectedCustomer.level} • <span className="text-cyber-purple font-bold">{selectedCustomer.psychProfile?.primary || 'Unknown'}</span></div><div className="text-[10px] text-cyber-green mt-1 font-bold">-{customerDiscountAuth.toFixed(1)}% Auth Discount</div></div></div>) : (<div className="text-center py-8 text-gray-600 border border-dashed border-gray-700 rounded-xl"><Users size={32} className="mx-auto mb-2"/><p className="text-xs">No Client Selected</p></div>)}
+                {showProfitDetails && (<div className="space-y-4 pt-4 border-t border-white/10"><div className="flex justify-between items-center"><span className="text-sm text-gray-400">Revenue</span><span className="font-mono text-white">${currentAmount.toFixed(2)}</span></div><div className="flex justify-between items-center"><span className="text-sm text-gray-400">Est. Cost</span><span className="font-mono text-red-400">-${estimatedCost.toFixed(2)}</span></div><div className="bg-black/40 p-3 rounded-lg flex justify-between items-center border border-white/10"><span className="text-sm font-bold text-cyber-gold">PROFIT</span><span className={`font-mono font-bold text-lg ${projectedProfit > 0 ? 'text-cyber-green' : 'text-red-500'}`}>${projectedProfit.toFixed(2)}</span></div><div className="w-full h-1 bg-gray-800 rounded-full overflow-hidden"><div className={`h-full ${profitMarginPercent > 50 ? 'bg-cyber-green' : 'bg-yellow-500'}`} style={{width: `${profitMarginPercent}%`}}></div></div><div className="text-right text-xs text-gray-500">{profitMarginPercent.toFixed(0)}% Margin</div></div>)}
+            </div>
+            <div className="bg-cyber-panel border border-white/10 rounded-2xl p-4"><h3 className="text-xs uppercase font-bold text-gray-400 mb-2">Recommended</h3><div className="space-y-2">{recommendedBatches.map(b=><button key={b.id} onClick={()=>updatePOSState({batchId: b.id})} className="w-full text-left p-3 bg-white/5 hover:bg-white/10 rounded-lg border border-white/5 text-xs"><div className="font-bold text-white">{b.name}</div><div className="text-gray-400">{b.currentStock.toFixed(1)}{inventoryTerms.unit} @ ${b.targetRetailPrice}/{inventoryTerms.unit}</div></button>)}</div></div>
+        </div>
     </div>
   );
 };

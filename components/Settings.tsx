@@ -1,50 +1,30 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useData } from '../DataContext';
-import { Settings as SettingsIcon, Save, Users, Plus, X, Download, Smartphone, Trash2, Monitor, Lock, ShieldCheck, Database, Upload, FileJson, DollarSign, List, Package, AlertTriangle, Calculator, TrendingUp } from 'lucide-react';
+import { useAppStore } from '../stores/useAppStore';
+import { Settings as SettingsIcon, Save, Users, Plus, X, Download, Smartphone, Trash2, Monitor, Lock, ShieldCheck, Database, Upload, FileJson, DollarSign, List, Package, AlertTriangle, Calculator, TrendingUp, Wallet, CreditCard, Hash, CheckCircle } from 'lucide-react';
 import { BackupData } from '../types';
 
 const Settings: React.FC = () => {
-  const { settings, updateSettings, addNotification, batches, customers, sales, operationalExpenses, loadBackup } = useData();
+  const { 
+    settings, updateSettings, addNotification, batches, customers, sales, 
+    operationalExpenses, partners, referrals, financials, missions, 
+    updateFinancials, loadBackup, isInstallable, triggerInstallPrompt 
+  } = useAppStore(state => ({ ...state }));
+  
   const [form, setForm] = useState(settings);
   const [saved, setSaved] = useState(false);
   const [newStaff, setNewStaff] = useState('');
   const [newCategory, setNewCategory] = useState('');
+  const [adjustCash, setAdjustCash] = useState(0);
+  const [adjustBank, setAdjustBank] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  // PIN Management
   const [pinInput, setPinInput] = useState(settings.appPin || '');
-  
-  // PWA Install State
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [isInstallable, setIsInstallable] = useState(false);
 
-  useEffect(() => {
-    const handler = (e: any) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      setIsInstallable(true);
-    };
-    window.addEventListener('beforeinstallprompt', handler);
-    return () => window.removeEventListener('beforeinstallprompt', handler);
-  }, []);
+  useEffect(() => { setAdjustCash(financials.cashOnHand); setAdjustBank(financials.bankBalance); }, [financials]);
+  useEffect(() => { setForm(settings); setPinInput(settings.appPin || ''); }, [settings]);
 
-  // Calculate projected margin based on default values
+
   const projectedMargin = form.defaultPricePerGram - form.defaultCostEstimate;
   const projectedMarginPercent = form.defaultPricePerGram > 0 ? (projectedMargin / form.defaultPricePerGram) * 100 : 0;
-
-  const handleInstallClick = async () => {
-    if (!deferredPrompt) {
-        addNotification("Installation not supported or already installed.", 'INFO');
-        return;
-    }
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-        addNotification("Installing Application...", 'SUCCESS');
-        setDeferredPrompt(null);
-        setIsInstallable(false);
-    }
-  };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,9 +36,14 @@ const Settings: React.FC = () => {
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
+  
+  const handleUpdateFinancials = () => {
+      updateFinancials({ cashOnHand: adjustCash, bankBalance: adjustBank });
+      addNotification("Wallet balances manually updated.", 'WARNING');
+  };
 
   const handleFactoryReset = () => {
-      if (window.confirm("CRITICAL WARNING: This will permanently delete ALL data (Stock, Sales, Customers). This cannot be undone. Are you sure?")) {
+      if (window.confirm("CRITICAL WARNING: This will permanently delete ALL data. Are you sure?")) {
           if(window.confirm("FINAL CONFIRMATION: Wipe system completely?")) {
               localStorage.clear();
               window.location.reload();
@@ -66,41 +51,13 @@ const Settings: React.FC = () => {
       }
   };
 
-  const addStaff = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (newStaff && !form.staffMembers.includes(newStaff)) {
-          setForm({ ...form, staffMembers: [...form.staffMembers, newStaff] });
-          setNewStaff('');
-      }
-  };
-
-  const removeStaff = (name: string) => {
-      setForm({ ...form, staffMembers: form.staffMembers.filter(s => s !== name) });
-  };
-
-  const addCategory = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (newCategory && !form.expenseCategories.includes(newCategory)) {
-          setForm({ ...form, expenseCategories: [...form.expenseCategories, newCategory] });
-          setNewCategory('');
-      }
-  };
-
-  const removeCategory = (cat: string) => {
-      setForm({ ...form, expenseCategories: form.expenseCategories.filter(c => c !== cat) });
-  };
+  const addStaff = (e: React.FormEvent) => { e.preventDefault(); if (newStaff && !form.staffMembers.includes(newStaff)) { setForm({ ...form, staffMembers: [...form.staffMembers, newStaff] }); setNewStaff(''); } };
+  const removeStaff = (name: string) => { setForm({ ...form, staffMembers: form.staffMembers.filter(s => s !== name) }); };
+  const addCategory = (e: React.FormEvent) => { e.preventDefault(); if (newCategory && !form.expenseCategories.includes(newCategory)) { setForm({ ...form, expenseCategories: [...form.expenseCategories, newCategory] }); setNewCategory(''); } };
+  const removeCategory = (cat: string) => { setForm({ ...form, expenseCategories: form.expenseCategories.filter(c => c !== cat) }); };
 
   const handleExportBackup = () => {
-      const backup: BackupData = {
-          version: "2.6.0",
-          timestamp: new Date().toISOString(),
-          batches,
-          customers,
-          sales,
-          operationalExpenses,
-          settings
-      };
-
+      const backup: BackupData = { version: "2.6.0", timestamp: new Date().toISOString(), batches, customers, sales, operationalExpenses, settings, partners, referrals, financials, missions };
       const dataStr = JSON.stringify(backup, null, 2);
       const blob = new Blob([dataStr], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -111,30 +68,21 @@ const Settings: React.FC = () => {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      
       addNotification("Backup file generated.", "SUCCESS");
   };
 
-  const handleImportClick = () => {
-      fileInputRef.current?.click();
-  };
+  const handleImportClick = () => fileInputRef.current?.click();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
-
       const reader = new FileReader();
       reader.onload = (event) => {
           try {
               const json = JSON.parse(event.target?.result as string);
               if (!json.version || !json.timestamp) throw new Error("Invalid backup format");
-              if (window.confirm(`Restore backup from ${new Date(json.timestamp).toLocaleDateString()}?`)) {
-                   loadBackup(json);
-              }
-          } catch (err) {
-              console.error(err);
-              addNotification("Failed to parse backup file.", "ERROR");
-          }
+              if (window.confirm(`Restore backup from ${new Date(json.timestamp).toLocaleDateString()}?`)) loadBackup(json);
+          } catch (err) { addNotification("Failed to parse backup file.", "ERROR"); }
       };
       reader.readAsText(file);
       e.target.value = '';
@@ -142,239 +90,82 @@ const Settings: React.FC = () => {
 
   return (
     <div className="max-w-5xl mx-auto mt-6 pb-20 animate-fade-in">
-      <h2 className="text-3xl font-bold text-white mb-8 flex items-center gap-3 tracking-tight uppercase">
-        <SettingsIcon className="text-cyber-gold" /> System Configuration
-      </h2>
+        <h2 className="text-3xl font-bold text-white mb-8 flex items-center gap-3 tracking-tight uppercase"><SettingsIcon className="text-cyber-gold" /> System Configuration</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <form onSubmit={handleSave} className="space-y-8">
+                {/* Core Business Logic */}
+                <div className="bg-cyber-panel border border-white/10 rounded-2xl p-6">
+                    <h3 className="text-white font-bold uppercase text-sm mb-6 flex items-center gap-2"><Calculator size={16} className="text-cyber-green"/> Core Business Logic</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div><label className="text-xs text-gray-400 uppercase font-bold">Default Retail Price</label><input type="number" value={form.defaultPricePerGram} onChange={e => setForm({...form, defaultPricePerGram: parseFloat(e.target.value)})} className="w-full bg-black/50 border border-white/10 rounded p-2 text-white outline-none"/></div>
+                        <div><label className="text-xs text-gray-400 uppercase font-bold">Default Wholesale</label><input type="number" value={form.defaultWholesalePrice} onChange={e => setForm({...form, defaultWholesalePrice: parseFloat(e.target.value)})} className="w-full bg-black/50 border border-white/10 rounded p-2 text-white outline-none"/></div>
+                        <div><label className="text-xs text-gray-400 uppercase font-bold">Est. Cost Basis</label><input type="number" value={form.defaultCostEstimate} onChange={e => setForm({...form, defaultCostEstimate: parseFloat(e.target.value)})} className="w-full bg-black/50 border border-white/10 rounded p-2 text-white outline-none"/></div>
+                        <div><label className="text-xs text-gray-400 uppercase font-bold">Commission Rate (%)</label><input type="number" value={form.commissionRate} onChange={e => setForm({...form, commissionRate: parseFloat(e.target.value)})} className="w-full bg-black/50 border border-white/10 rounded p-2 text-white outline-none"/></div>
+                    </div>
+                    <div className="mt-4 p-3 bg-black/40 rounded border border-white/10 flex justify-between items-center"><div className="text-xs text-gray-400">Projected Margin</div><div className="text-cyber-gold font-mono font-bold">{projectedMarginPercent.toFixed(1)}%</div></div>
+                </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          
-          {/* LEFT COLUMN: OPERATIONAL SETTINGS */}
-          <form onSubmit={handleSave} className="space-y-8">
-            
-            {/* ECONOMICS PANEL - REDESIGNED */}
-            <div className="bg-cyber-panel border border-white/10 rounded-2xl overflow-hidden">
-                <div className="p-6 border-b border-white/10 bg-white/5 flex justify-between items-center">
-                    <h3 className="text-white font-bold uppercase text-sm flex items-center gap-2">
-                        <DollarSign size={16} className="text-cyber-green"/> Financial Standards
-                    </h3>
-                    <div className="flex items-center gap-2 bg-black/40 px-3 py-1 rounded-lg border border-white/5">
-                        <span className="text-xs text-gray-400 font-bold uppercase">Base Margin</span>
-                        <span className={`text-sm font-mono font-bold ${projectedMarginPercent > 50 ? 'text-cyber-green' : 'text-cyber-gold'}`}>
-                            {projectedMarginPercent.toFixed(0)}%
-                        </span>
+                {/* Operator Identity */}
+                <div className="bg-cyber-panel border border-white/10 rounded-2xl p-6">
+                    <h3 className="text-white font-bold uppercase text-sm mb-6 flex items-center gap-2"><Users size={16} className="text-cyber-purple"/> Operator Identity</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div><label className="text-xs text-gray-400 uppercase font-bold">Operator Alias</label><input value={form.operatorAlias} onChange={e => setForm({...form, operatorAlias: e.target.value})} className="w-full bg-black/50 border border-white/10 rounded p-2 text-white outline-none"/></div>
+                        <div><label className="text-xs text-gray-400 uppercase font-bold">Public Dealer ID</label><input value={form.publicDealerId} onChange={e => setForm({...form, publicDealerId: e.target.value})} className="w-full bg-black/50 border border-white/10 rounded p-2 text-white outline-none"/></div>
+                    </div>
+                </div>
+                
+                {/* System Access */}
+                <div className="bg-cyber-panel border border-white/10 rounded-2xl p-6">
+                    <h3 className="text-white font-bold uppercase text-sm mb-6 flex items-center gap-2"><Lock size={16} className="text-red-500"/> System Access</h3>
+                    <div><label className="text-xs text-gray-400 uppercase font-bold">4-Digit Lock PIN (leave blank to disable)</label><input type="text" maxLength={4} value={pinInput} onChange={e => setPinInput(e.target.value.replace(/\D/g, ''))} className="w-full bg-black/50 border border-white/10 rounded p-2 text-white font-mono text-2xl tracking-[0.5em] text-center outline-none"/></div>
+                </div>
+
+                <button type="submit" className="w-full bg-cyber-gold text-black font-bold py-4 rounded-xl uppercase tracking-widest hover:brightness-110 transition-all flex items-center justify-center gap-2">
+                    {saved ? <CheckCircle size={20}/> : <Save size={20}/>} {saved ? 'SAVED' : 'Save Configuration'}
+                </button>
+            </form>
+
+            <div className="space-y-8">
+                {/* Staff & Categories */}
+                <div className="bg-cyber-panel border border-white/10 rounded-2xl p-6">
+                    <h3 className="text-white font-bold uppercase text-sm mb-6 flex items-center gap-2"><List size={16} /> Staff & Categories</h3>
+                    <div className="grid grid-cols-2 gap-6">
+                        <div>
+                            <h4 className="text-xs text-gray-400 uppercase font-bold mb-2">Staff Members</h4>
+                            <form onSubmit={addStaff} className="flex gap-2 mb-2"><input value={newStaff} onChange={e => setNewStaff(e.target.value)} className="flex-1 bg-black/50 text-xs p-2 rounded border border-white/10"/><button type="submit" className="bg-white/10 p-2 rounded"><Plus size={14}/></button></form>
+                            <div className="space-y-1">{form.staffMembers.map(s => <div key={s} className="flex justify-between items-center bg-white/5 p-1 px-2 rounded text-xs"><span className="text-gray-300">{s}</span><button onClick={()=>removeStaff(s)} className="text-gray-600 hover:text-red-500"><X size={12}/></button></div>)}</div>
+                        </div>
+                        <div>
+                            <h4 className="text-xs text-gray-400 uppercase font-bold mb-2">Expense Categories</h4>
+                            <form onSubmit={addCategory} className="flex gap-2 mb-2"><input value={newCategory} onChange={e => setNewCategory(e.target.value)} className="flex-1 bg-black/50 text-xs p-2 rounded border border-white/10"/><button type="submit" className="bg-white/10 p-2 rounded"><Plus size={14}/></button></form>
+                            <div className="space-y-1">{form.expenseCategories.map(c => <div key={c} className="flex justify-between items-center bg-white/5 p-1 px-2 rounded text-xs"><span className="text-gray-300">{c}</span><button onClick={()=>removeCategory(c)} className="text-gray-600 hover:text-red-500"><X size={12}/></button></div>)}</div>
+                        </div>
                     </div>
                 </div>
 
-                <div className="p-8 space-y-6">
-                    {/* COST SECTION */}
-                    <div className="space-y-3">
-                        <div className="flex items-center gap-2 text-cyber-gold font-bold text-xs uppercase tracking-wider">
-                            <TrendingUp size={12}/> Acquisition (Cost)
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                             <div className="space-y-2">
-                                <label className="text-gray-400 text-xs">Default Cost Estimate</label>
-                                <div className="relative">
-                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-mono">$</span>
-                                    <input 
-                                        type="number" step="0.01"
-                                        value={form.defaultCostEstimate}
-                                        onChange={e => setForm({...form, defaultCostEstimate: parseFloat(e.target.value) || 0})}
-                                        className="w-full bg-black/40 border border-white/10 rounded-xl p-3 pl-6 text-white focus:border-cyber-gold outline-none font-mono"
-                                    />
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-gray-400 text-xs">Currency Symbol</label>
-                                <input 
-                                    type="text" maxLength={3}
-                                    value={form.currencySymbol}
-                                    onChange={e => setForm({...form, currencySymbol: e.target.value})}
-                                    className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-cyber-gold outline-none font-mono text-center"
-                                />
-                            </div>
-                        </div>
-                        <p className="text-[10px] text-gray-600">Cost estimate is used as a fallback for profit calculations when batch acquisition data is missing.</p>
+                 {/* Wallet Management */}
+                 <div className="bg-cyber-panel border border-white/10 rounded-2xl p-6">
+                    <h3 className="text-white font-bold uppercase text-sm mb-6 flex items-center gap-2"><Wallet size={16} className="text-blue-400"/> Wallet Management</h3>
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div><label className="text-xs text-gray-400 uppercase font-bold">Cash on Hand</label><input type="number" value={adjustCash} onChange={e => setAdjustCash(parseFloat(e.target.value))} className="w-full bg-black/50 border border-white/10 rounded p-2 text-white outline-none"/></div>
+                        <div><label className="text-xs text-gray-400 uppercase font-bold">Bank Balance</label><input type="number" value={adjustBank} onChange={e => setAdjustBank(parseFloat(e.target.value))} className="w-full bg-black/50 border border-white/10 rounded p-2 text-white outline-none"/></div>
                     </div>
-
-                    <div className="h-[1px] bg-white/5 w-full"></div>
-
-                    {/* PRICING SECTION */}
-                    <div className="space-y-3">
-                        <div className="flex items-center gap-2 text-cyber-green font-bold text-xs uppercase tracking-wider">
-                            <DollarSign size={12}/> Resale Strategy (Price)
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <label className="text-gray-400 text-xs">Standard Retail Price</label>
-                                <div className="relative">
-                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-mono">$</span>
-                                    <input 
-                                        type="number" step="0.01"
-                                        value={form.defaultPricePerGram}
-                                        onChange={e => setForm({...form, defaultPricePerGram: parseFloat(e.target.value) || 0})}
-                                        className="w-full bg-black/40 border border-white/10 rounded-xl p-3 pl-6 text-white focus:border-cyber-green outline-none font-mono font-bold"
-                                    />
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-gray-400 text-xs">Wholesale / Bulk Price</label>
-                                <div className="relative">
-                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-mono">$</span>
-                                    <input 
-                                        type="number" step="0.01"
-                                        value={form.defaultWholesalePrice}
-                                        onChange={e => setForm({...form, defaultWholesalePrice: parseFloat(e.target.value) || 0})}
-                                        className="w-full bg-black/40 border border-white/10 rounded-xl p-3 pl-6 text-white focus:border-cyber-green outline-none font-mono"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                        <p className="text-[10px] text-gray-600">These values will auto-populate new inventory batches but can be overridden per batch.</p>
+                    <button onClick={handleUpdateFinancials} className="w-full bg-blue-500/20 border border-blue-500/50 text-blue-400 font-bold py-2 rounded text-xs hover:bg-blue-500 hover:text-white transition-all">Manually Adjust Balances</button>
+                </div>
+                
+                {/* System & Data */}
+                <div className="bg-cyber-panel border border-white/10 rounded-2xl p-6">
+                    <h3 className="text-white font-bold uppercase text-sm mb-6 flex items-center gap-2"><Database size={16}/> System & Data</h3>
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                        <button onClick={handleExportBackup} className="bg-white/5 p-4 rounded-xl flex flex-col items-center justify-center gap-2 text-gray-300 hover:bg-white/10 hover:text-white"><Download size={20}/> <span className="text-xs font-bold">Export Backup</span></button>
+                        <button onClick={handleImportClick} className="bg-white/5 p-4 rounded-xl flex flex-col items-center justify-center gap-2 text-gray-300 hover:bg-white/10 hover:text-white"><Upload size={20}/> <span className="text-xs font-bold">Import Backup</span></button>
+                        <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".json"/>
                     </div>
+                    {isInstallable && <button onClick={triggerInstallPrompt} className="w-full bg-cyber-purple/20 border border-cyber-purple/50 text-cyber-purple font-bold py-3 rounded-lg text-sm hover:bg-cyber-purple hover:text-white transition-all flex items-center justify-center gap-2 mb-4"><Smartphone size={16}/> Install PWA</button>}
+                    <button onClick={handleFactoryReset} className="w-full bg-red-500/20 border border-red-500/50 text-red-400 font-bold py-3 rounded-lg text-sm hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2"><AlertTriangle size={16}/> Factory Reset</button>
                 </div>
             </div>
-
-            {/* INVENTORY PROTOCOLS */}
-            <div className="bg-cyber-panel border border-white/10 rounded-2xl p-8 space-y-6">
-                <h3 className="text-white font-bold uppercase text-sm border-b border-white/10 pb-4 flex items-center gap-2">
-                    <Package size={16} className="text-blue-400"/> Inventory Protocols
-                </h3>
-                <div className="space-y-2">
-                    <label className="text-gray-400 font-bold uppercase text-xs tracking-wider">Low Stock Threshold (g)</label>
-                    <input 
-                        type="number"
-                        value={form.lowStockThreshold}
-                        onChange={e => setForm({...form, lowStockThreshold: parseFloat(e.target.value) || 0})}
-                        className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-blue-500 outline-none font-mono"
-                    />
-                    <p className="text-[10px] text-gray-500">Inventory levels below this amount will trigger critical alerts.</p>
-                </div>
-            </div>
-
-            {/* EXPENSE CATEGORIES */}
-             <div className="bg-cyber-panel border border-white/10 rounded-2xl p-8 space-y-6">
-                <h3 className="text-white font-bold uppercase text-sm border-b border-white/10 pb-4 flex items-center gap-2">
-                    <List size={16}/> Ledger Categories
-                </h3>
-                <div className="flex flex-wrap gap-2 mb-2">
-                    {form.expenseCategories.map(cat => (
-                        <span key={cat} className="bg-white/10 text-white text-xs px-2 py-1 rounded flex items-center gap-2">
-                            {cat} <button type="button" onClick={() => removeCategory(cat)}><X size={10} className="hover:text-red-500"/></button>
-                        </span>
-                    ))}
-                </div>
-                <div className="flex gap-2">
-                    <input 
-                        value={newCategory} onChange={e => setNewCategory(e.target.value)} placeholder="Add Category"
-                        className="flex-1 bg-black/40 border border-white/10 rounded-lg p-3 text-white outline-none focus:border-cyber-purple"
-                    />
-                    <button onClick={addCategory} className="bg-white/10 text-white p-3 rounded-lg hover:bg-white/20"><Plus size={20}/></button>
-                </div>
-            </div>
-
-            {/* SECURITY PANEL */}
-            <div className="bg-cyber-panel border border-white/10 rounded-2xl p-8 space-y-6">
-                 <h3 className="text-white font-bold uppercase text-sm border-b border-white/10 pb-4 flex items-center gap-2">
-                    <ShieldCheck size={16} className="text-cyber-gold"/> Security Protocols
-                 </h3>
-                 <div className="space-y-2">
-                     <label className="text-gray-400 font-bold uppercase text-xs tracking-wider">Access PIN</label>
-                     <div className="relative">
-                        <Lock size={16} className="absolute left-4 top-4 text-gray-500"/>
-                        <input 
-                            type="text" maxLength={4} placeholder="Set PIN (Empty to disable)"
-                            value={pinInput} onChange={e => { const val = e.target.value.replace(/[^0-9]/g, ''); setPinInput(val); }}
-                            className="w-full bg-black/40 border border-white/10 rounded-xl p-4 pl-12 text-xl font-mono text-white tracking-[0.5em] focus:border-cyber-gold outline-none"
-                        />
-                     </div>
-                 </div>
-            </div>
-
-            <button 
-                type="submit"
-                className={`w-full py-4 rounded-xl font-bold uppercase tracking-widest transition-all shadow-lg ${saved ? 'bg-cyber-green text-black' : 'bg-white text-black hover:bg-gray-200'}`}
-            >
-                {saved ? 'Configuration Saved' : 'Save System Changes'}
-            </button>
-          </form>
-
-          {/* RIGHT COLUMN: DATA & SYSTEM */}
-          <div className="space-y-8">
-              
-              <div className="bg-cyber-panel border border-white/10 rounded-2xl p-8 space-y-6">
-                  <h3 className="text-white font-bold uppercase text-sm border-b border-white/10 pb-4 flex items-center gap-2">
-                      <Database size={16}/> Data Persistence
-                  </h3>
-                  <div className="grid grid-cols-2 gap-4">
-                      <button onClick={handleExportBackup} className="bg-white/5 border border-white/10 hover:bg-white/10 hover:border-cyber-gold p-4 rounded-xl flex flex-col items-center gap-2 transition-all group">
-                          <Download size={24} className="text-cyber-gold group-hover:scale-110 transition-transform" />
-                          <span className="text-xs font-bold uppercase text-white">Export Backup</span>
-                      </button>
-                      <button onClick={handleImportClick} className="bg-white/5 border border-white/10 hover:bg-white/10 hover:border-cyber-purple p-4 rounded-xl flex flex-col items-center gap-2 transition-all group">
-                          <Upload size={24} className="text-cyber-purple group-hover:scale-110 transition-transform" />
-                          <span className="text-xs font-bold uppercase text-white">Import Data</span>
-                      </button>
-                      <input type="file" accept=".json" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
-                  </div>
-              </div>
-
-              <div className="bg-cyber-panel border border-white/10 rounded-2xl p-8 space-y-6">
-                   <h3 className="text-white font-bold uppercase text-sm border-b border-white/10 pb-4 flex items-center gap-2"><Users size={16}/> Staff Management</h3>
-                   <div className="space-y-2">
-                       <label className="text-gray-400 font-bold uppercase text-xs tracking-wider">Commission Rate (%)</label>
-                       <input 
-                           type="number" step="0.1" value={form.commissionRate}
-                           onChange={e => setForm({...form, commissionRate: parseFloat(e.target.value) || 0})}
-                           className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-xl font-mono text-cyber-purple focus:border-cyber-purple outline-none"
-                       />
-                   </div>
-                   <div className="space-y-2 mb-4 max-h-40 overflow-y-auto">
-                       {form.staffMembers.map(staff => (
-                           <div key={staff} className="flex justify-between items-center bg-white/5 p-3 rounded-lg">
-                               <span className="text-white font-bold">{staff}</span>
-                               {form.staffMembers.length > 1 && (
-                                   <button onClick={() => removeStaff(staff)} className="text-gray-500 hover:text-red-500"><Trash2 size={16} /></button>
-                               )}
-                           </div>
-                       ))}
-                   </div>
-                   <div className="flex gap-2">
-                       <input value={newStaff} onChange={e => setNewStaff(e.target.value)} placeholder="New Agent Name" className="flex-1 bg-black/40 border border-white/10 rounded-lg p-3 text-white outline-none" />
-                       <button onClick={addStaff} className="bg-cyber-purple/20 text-cyber-purple border border-cyber-purple/50 px-4 rounded-lg"><Plus size={20}/></button>
-                   </div>
-              </div>
-
-              {/* SYSTEM INFO */}
-              <div className="bg-cyber-panel border border-white/10 rounded-2xl p-8">
-                  <h3 className="text-white font-bold uppercase text-sm border-b border-white/10 pb-4 mb-6 flex items-center gap-2"><Monitor size={16}/> Application Status</h3>
-                  <div className="text-center">
-                      {isInstallable ? (
-                          <button onClick={handleInstallClick} className="w-full bg-cyber-gold text-black font-bold py-4 rounded-xl flex items-center justify-center gap-2 mb-4 hover:brightness-110">
-                              <Download size={20} /> Install App
-                          </button>
-                      ) : (
-                          <div className="w-full bg-white/5 text-gray-500 font-bold py-4 rounded-xl flex items-center justify-center gap-2 mb-4 border border-white/5">
-                              <Smartphone size={20} /> App Installed
-                          </div>
-                      )}
-                      <p className="text-[10px] text-gray-600 uppercase font-bold tracking-widest">System Version 2.6.0</p>
-                  </div>
-              </div>
-
-              {/* HAZARD ZONE */}
-              <div className="bg-red-900/10 border border-red-500/30 rounded-2xl p-8 space-y-6">
-                  <h3 className="text-red-500 font-bold uppercase text-sm border-b border-red-500/20 pb-4 flex items-center gap-2">
-                      <AlertTriangle size={16}/> Hazard Zone
-                  </h3>
-                  <p className="text-xs text-gray-400">Irreversible actions. Proceed with caution.</p>
-                  <button type="button" onClick={handleFactoryReset} className="w-full bg-red-500 hover:bg-red-400 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all shadow-[0_0_15px_rgba(239,68,68,0.4)]">
-                      <Trash2 size={20}/> Factory Reset System
-                  </button>
-              </div>
-
-          </div>
-      </div>
+        </div>
     </div>
   );
 };

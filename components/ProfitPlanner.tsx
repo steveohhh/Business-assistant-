@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useData } from '../DataContext';
+import { useAppStore } from '../stores/useAppStore';
 import { Calculator, TrendingUp, AlertTriangle, ArrowRight, DollarSign, Percent, Scale, Crosshair } from 'lucide-react';
 import { Batch } from '../types';
 
@@ -8,7 +8,11 @@ interface ProfitPlannerProps {
 }
 
 const ProfitPlanner: React.FC<ProfitPlannerProps> = ({ onNavigateToPOS }) => {
-  const { batches, stageTransaction, settings } = useData();
+  const { batches, stageTransaction, settings } = useAppStore(state => ({
+    batches: state.batches,
+    stageTransaction: state.stageTransaction,
+    settings: state.settings,
+  }));
   const [selectedBatchId, setSelectedBatchId] = useState('');
   
   // Scenario State
@@ -25,7 +29,7 @@ const ProfitPlanner: React.FC<ProfitPlannerProps> = ({ onNavigateToPOS }) => {
     } else {
       setBasePrice(settings.defaultPricePerGram);
     }
-  }, [selectedBatchId, settings.defaultPricePerGram]);
+  }, [selectedBatchId, settings.defaultPricePerGram, selectedBatch]);
 
   // Calculations
   const finalPricePerGram = basePrice * (1 - discountPercent / 100);
