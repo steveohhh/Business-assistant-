@@ -59,10 +59,8 @@ const MissionCard: React.FC<{ mission: Mission, onClaim: (id: string) => void }>
 };
 
 const Missions: React.FC = () => {
-    const { missions, claimMissionReward } = useAppStore(state => ({
-        missions: state.missions,
-        claimMissionReward: state.claimMissionReward
-    }));
+    const missions = useAppStore(s => s.missions);
+    const claimMissionReward = useAppStore(s => s.claimMissionReward);
 
     const inProgress = missions.filter(m => !m.isComplete);
     const completable = missions.filter(m => m.isComplete && !m.isClaimed);

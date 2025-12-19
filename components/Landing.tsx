@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Shield, Ghost, ArrowRight, Settings, Download, X, Zap, Wifi, Database } from 'lucide-react';
 import { useAppStore } from '../stores/useAppStore';
@@ -22,12 +21,10 @@ const BootSequence: React.FC<BootSequenceProps> = ({ onSelectOperator, onConnect
     const [sequenceComplete, setSequenceComplete] = useState(false);
     const [showOptions, setShowOptions] = useState(false);
 
-    const { highFidelityMode, toggleHighFidelityMode, isInstallable, triggerInstallPrompt } = useAppStore(state => ({
-        highFidelityMode: state.highFidelityMode,
-        toggleHighFidelityMode: state.toggleHighFidelityMode,
-        isInstallable: state.isInstallable,
-        triggerInstallPrompt: state.triggerInstallPrompt
-    }));
+    const highFidelityMode = useAppStore(s => s.highFidelityMode);
+    const toggleHighFidelityMode = useAppStore(s => s.toggleHighFidelityMode);
+    const isInstallable = useAppStore(s => s.isInstallable);
+    const triggerInstallPrompt = useAppStore(s => s.triggerInstallPrompt);
 
     useEffect(() => {
         let timer = 0;

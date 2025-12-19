@@ -388,13 +388,12 @@ const HeroCustomerCard: React.FC<{ customer: Customer, onClick: () => void }> = 
 };
 
 const Customers: React.FC = () => {
-  const { customers, addCustomer, updateCustomer, addNotification, triggerPrestige } = useAppStore(state => ({
-      customers: state.customers,
-      addCustomer: state.addCustomer,
-      updateCustomer: state.updateCustomer,
-      addNotification: state.addNotification,
-      triggerPrestige: state.triggerPrestige
-  }));
+  const customers = useAppStore(s => s.customers);
+  const addCustomer = useAppStore(s => s.addCustomer);
+  const updateCustomer = useAppStore(s => s.updateCustomer);
+  const addNotification = useAppStore(s => s.addNotification);
+  const triggerPrestige = useAppStore(s => s.triggerPrestige);
+
   const [showAdd, setShowAdd] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'SHEET' | 'MATRIX' | 'PSYCHOLOGY' | 'RHYTHM' | 'GALLERY'>('OVERVIEW');

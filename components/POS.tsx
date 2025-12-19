@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Batch, Customer } from '../types';
 import { useAppStore } from '../stores/useAppStore';
 import { ShoppingCart, Users, DollarSign, Scale, Calculator, RefreshCw, Eye, EyeOff, Sparkles, ChevronRight, UserCircle, AlertCircle, Link2, Link2Off, CheckCircle, CheckCircle2, X, Award, Star, Zap, CreditCard, Wallet, ShieldAlert, Target, TrendingDown, TrendingUp, Crown, Trophy, User, Medal, Percent } from 'lucide-react';
-import { PrestigeBadge } from './Customers';
+// FIX: Removed unused import causing module resolution issues with React.lazy
+// import { PrestigeBadge } from './Customers';
 
 // Robust Math Helper
 const round = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100;
@@ -45,10 +46,16 @@ const HaggleWidget = ({ costBasis, currentPrice, targetPrice, authorizedDiscount
 };
 
 const POS: React.FC = () => {
-  const { 
-    batches, customers, processSale, settings, stagedTransaction, stageTransaction, 
-    posState, updatePOSState, sales, inventoryTerms 
-  } = useAppStore(state => ({ ...state }));
+  const batches = useAppStore(s => s.batches);
+  const customers = useAppStore(s => s.customers);
+  const processSale = useAppStore(s => s.processSale);
+  const settings = useAppStore(s => s.settings);
+  const stagedTransaction = useAppStore(s => s.stagedTransaction);
+  const stageTransaction = useAppStore(s => s.stageTransaction);
+  const posState = useAppStore(s => s.posState);
+  const updatePOSState = useAppStore(s => s.updatePOSState);
+  const sales = useAppStore(s => s.sales);
+  const inventoryTerms = useAppStore(s => s.inventoryTerms);
   
   const [showProfitDetails, setShowProfitDetails] = useState(true);
   const [isLinked, setIsLinked] = useState(true); 
@@ -211,14 +218,4 @@ const POS: React.FC = () => {
 
         <div className="space-y-6">
             <div className="bg-cyber-panel border border-white/10 rounded-2xl p-6">
-                <h3 className="text-xs uppercase font-bold text-gray-400 mb-4 flex justify-between items-center">Context HUD <button onClick={() => setShowProfitDetails(!showProfitDetails)} className="text-gray-500 hover:text-white">{showProfitDetails ? <EyeOff size={14}/> : <Eye size={14}/>}</button></h3>
-                {selectedCustomer ? (<div className="flex items-center gap-4 mb-6"><div className="relative"><div className="w-16 h-16 rounded-full bg-black/50 border-2 border-cyber-purple flex items-center justify-center">{selectedCustomer.avatarImage ? <img src={selectedCustomer.avatarImage} className="w-full h-full object-cover rounded-full"/> : <User size={32} className="text-cyber-purple"/>}</div>{selectedCustomer.prestige > 0 && <div className="absolute -bottom-2 -right-2"><PrestigeBadge prestige={selectedCustomer.prestige} size={32}/></div>}</div><div><h4 className="text-white font-bold text-lg">{selectedCustomer.name}</h4><div className="text-xs text-gray-400">Lvl {selectedCustomer.level} • <span className="text-cyber-purple font-bold">{selectedCustomer.psychProfile?.primary || 'Unknown'}</span></div><div className="text-[10px] text-cyber-green mt-1 font-bold">-{customerDiscountAuth.toFixed(1)}% Auth Discount</div></div></div>) : (<div className="text-center py-8 text-gray-600 border border-dashed border-gray-700 rounded-xl"><Users size={32} className="mx-auto mb-2"/><p className="text-xs">No Client Selected</p></div>)}
-                {showProfitDetails && (<div className="space-y-4 pt-4 border-t border-white/10"><div className="flex justify-between items-center"><span className="text-sm text-gray-400">Revenue</span><span className="font-mono text-white">${currentAmount.toFixed(2)}</span></div><div className="flex justify-between items-center"><span className="text-sm text-gray-400">Est. Cost</span><span className="font-mono text-red-400">-${estimatedCost.toFixed(2)}</span></div><div className="bg-black/40 p-3 rounded-lg flex justify-between items-center border border-white/10"><span className="text-sm font-bold text-cyber-gold">PROFIT</span><span className={`font-mono font-bold text-lg ${projectedProfit > 0 ? 'text-cyber-green' : 'text-red-500'}`}>${projectedProfit.toFixed(2)}</span></div><div className="w-full h-1 bg-gray-800 rounded-full overflow-hidden"><div className={`h-full ${profitMarginPercent > 50 ? 'bg-cyber-green' : 'bg-yellow-500'}`} style={{width: `${profitMarginPercent}%`}}></div></div><div className="text-right text-xs text-gray-500">{profitMarginPercent.toFixed(0)}% Margin</div></div>)}
-            </div>
-            <div className="bg-cyber-panel border border-white/10 rounded-2xl p-4"><h3 className="text-xs uppercase font-bold text-gray-400 mb-2">Recommended</h3><div className="space-y-2">{recommendedBatches.map(b=><button key={b.id} onClick={()=>updatePOSState({batchId: b.id})} className="w-full text-left p-3 bg-white/5 hover:bg-white/10 rounded-lg border border-white/5 text-xs"><div className="font-bold text-white">{b.name}</div><div className="text-gray-400">{b.currentStock.toFixed(1)}{inventoryTerms.unit} @ ${b.targetRetailPrice}/{inventoryTerms.unit}</div></button>)}</div></div>
-        </div>
-    </div>
-  );
-};
-
-export default POS;
+                <h3 className="text-xs uppercase font-bold text-gray---

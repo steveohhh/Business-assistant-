@@ -5,14 +5,13 @@ import { generateDailyBriefing } from '../services/geminiService';
 import { LayoutDashboard, Package, ShoppingCart, Users, PieChart, FileText, Settings as SettingsIcon, Zap, RefreshCw, AlertTriangle, TrendingUp, DollarSign, Activity, Wifi, Gamepad2, Globe, Share2, Copy, User } from 'lucide-react';
 
 const Dashboard = ({ onNavigate }: { onNavigate: (v: ViewState) => void }) => {
-    const { sales, batches, customers, inventoryTerms, storeChannelId, addNotification } = useAppStore(state => ({
-        sales: state.sales,
-        batches: state.batches,
-        customers: state.customers,
-        inventoryTerms: state.inventoryTerms,
-        storeChannelId: state.storeChannelId,
-        addNotification: state.addNotification
-    }));
+    const sales = useAppStore(s => s.sales);
+    const batches = useAppStore(s => s.batches);
+    const customers = useAppStore(s => s.customers);
+    const inventoryTerms = useAppStore(s => s.inventoryTerms);
+    const storeChannelId = useAppStore(s => s.storeChannelId);
+    const addNotification = useAppStore(s => s.addNotification);
+
     const [briefing, setBriefing] = useState<string | null>(null);
     const [loadingBriefing, setLoadingBriefing] = useState(false);
 

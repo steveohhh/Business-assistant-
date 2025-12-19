@@ -4,18 +4,13 @@ import { useAppStore } from '../stores/useAppStore';
 import { Save, CheckCircle, AlertTriangle, TrendingDown, Trash2, Wallet, ArrowDownCircle, PlayCircle, Lock, Download, Calculator, DollarSign } from 'lucide-react';
 
 const Ledger: React.FC = () => {
-  const { 
-    sales, operationalExpenses, addOperationalExpense, deleteOperationalExpense, 
-    settings, addNotification 
-  } = useAppStore(state => ({
-    sales: state.sales,
-    operationalExpenses: state.operationalExpenses,
-    addOperationalExpense: state.addOperationalExpense,
-    deleteOperationalExpense: state.deleteOperationalExpense,
-    settings: state.settings,
-    addNotification: state.addNotification
-  }));
-  
+  const sales = useAppStore(s => s.sales);
+  const operationalExpenses = useAppStore(s => s.operationalExpenses);
+  const addOperationalExpense = useAppStore(s => s.addOperationalExpense);
+  const deleteOperationalExpense = useAppStore(s => s.deleteOperationalExpense);
+  const settings = useAppStore(s => s.settings);
+  const addNotification = useAppStore(s => s.addNotification);
+
   // Shift State
   const [shiftStarted, setShiftStarted] = useState(false);
   const [openingFloat, setOpeningFloat] = useState<number>(0);

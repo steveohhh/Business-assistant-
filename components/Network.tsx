@@ -5,16 +5,15 @@ import { Users, Plus, DollarSign, ArrowUpRight, TrendingUp, Link2, Trash2, Brief
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ReferenceLine, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ComposedChart, Line } from 'recharts';
 
 const Network: React.FC = () => {
-    const { partners, referrals, customers, addPartner, deletePartner, addReferral, storeChannelId, addNotification } = useAppStore(state => ({
-        partners: state.partners,
-        referrals: state.referrals,
-        customers: state.customers,
-        addPartner: state.addPartner,
-        deletePartner: state.deletePartner,
-        addReferral: state.addReferral,
-        storeChannelId: state.storeChannelId,
-        addNotification: state.addNotification,
-    }));
+    const partners = useAppStore(s => s.partners);
+    const referrals = useAppStore(s => s.referrals);
+    const customers = useAppStore(s => s.customers);
+    const addPartner = useAppStore(s => s.addPartner);
+    const deletePartner = useAppStore(s => s.deletePartner);
+    const addReferral = useAppStore(s => s.addReferral);
+    const storeChannelId = useAppStore(s => s.storeChannelId);
+    const addNotification = useAppStore(s => s.addNotification);
+
     const [viewMode, setViewMode] = useState<'MAP' | 'DEPTH' | 'FINANCIAL'>('MAP');
     const [selectedSector, setSelectedSector] = useState<string | null>(null);
     const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(null);

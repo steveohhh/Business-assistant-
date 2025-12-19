@@ -72,7 +72,8 @@ const ToastContainer = () => {
     )
 }
 
-const navItems = [
+// FIX: Explicitly type navItems to ensure item.view is of type ViewState, not string.
+const navItems: { view: ViewState, label: string, icon: React.ElementType }[] = [
   { view: 'DASHBOARD', label: 'Dashboard', icon: LayoutDashboard },
   { view: 'PROFILE', label: 'Profile', icon: User },
   { view: 'MISSIONS', label: 'Contracts', icon: Briefcase },
@@ -95,10 +96,16 @@ const AppContent: React.FC = () => {
   const [focusedView, setFocusedView] = useState<ViewState | null>(null);
   const [hubRotation, setHubRotation] = useState({ y: 0, x: 0 });
   
-  const { 
-      settings, financials, sales, inventoryTerms, highFidelityMode, 
-      storeChannelId, chatMessages, sendManagerMessage, clearChat
-  } = useAppStore();
+  const settings = useAppStore(s => s.settings);
+  const financials = useAppStore(s => s.financials);
+  const sales = useAppStore(s => s.sales);
+  const inventoryTerms = useAppStore(s => s.inventoryTerms);
+  const highFidelityMode = useAppStore(s => s.highFidelityMode);
+  const storeChannelId = useAppStore(s => s.storeChannelId);
+  const chatMessages = useAppStore(s => s.chatMessages);
+  const sendManagerMessage = useAppStore(s => s.sendManagerMessage);
+  const clearChat = useAppStore(s => s.clearChat);
+
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showThemeWizard, setShowThemeWizard] = useState(false);
   

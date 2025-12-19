@@ -4,14 +4,11 @@ import { User, Shield, TrendingUp, Activity, Terminal, Crosshair, Hexagon, Zap, 
 import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
 
 const DealerProfile: React.FC = () => {
-    const { settings, sales, financials, batches, operationalExpenses, inventoryTerms } = useAppStore(state => ({
-        settings: state.settings,
-        sales: state.sales,
-        financials: state.financials,
-        batches: state.batches,
-        operationalExpenses: state.operationalExpenses,
-        inventoryTerms: state.inventoryTerms
-    }));
+    const settings = useAppStore(s => s.settings);
+    const sales = useAppStore(s => s.sales);
+    const financials = useAppStore(s => s.financials);
+    const batches = useAppStore(s => s.batches);
+    const operationalExpenses = useAppStore(s => s.operationalExpenses);
 
     // --- DEALER STAT CALCULATIONS ---
     const stats = useMemo(() => {

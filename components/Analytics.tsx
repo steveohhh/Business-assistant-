@@ -103,13 +103,12 @@ const FlowDiagram = ({ sales, batches, expenses }: { sales: Sale[], batches: Bat
 };
 
 const Analytics: React.FC = () => {
-  const { batches, sales, biData, setBiData, operationalExpenses } = useAppStore(state => ({
-    batches: state.batches,
-    sales: state.sales,
-    biData: state.biData,
-    setBiData: state.setBiData,
-    operationalExpenses: state.operationalExpenses,
-  }));
+  const batches = useAppStore(s => s.batches);
+  const sales = useAppStore(s => s.sales);
+  const biData = useAppStore(s => s.biData);
+  const setBiData = useAppStore(s => s.setBiData);
+  const operationalExpenses = useAppStore(s => s.operationalExpenses);
+  
   const [activeTab, setActiveTab] = useState<'FINANCIAL' | 'NET_VALUE' | 'FLOW' | 'PATTERNS' | 'LOSS' | 'PREDICTIVE'>('FINANCIAL');
   const [financialTimeframe, setFinancialTimeframe] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY'>('DAILY');
   const [isLoading, setIsLoading] = useState(false);
