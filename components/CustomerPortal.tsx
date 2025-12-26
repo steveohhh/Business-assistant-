@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Batch, ChatMessage, InventoryTerms, Achievement } from '../types';
 import { getSupabase } from '../services/supabaseService';
@@ -243,24 +242,27 @@ const CustomerPortal: React.FC<CustomerPortalProps> = ({ channelId, inventoryTer
 
     // --- DOSSIER STATS ENGINE ---
     const { historyData, preferenceData, totalSpent } = useMemo(() => {
-        // Create Mock Data if not enough real history
-        const data = orders.length > 2 ? orders : [
-            { id: '1', date: new Date(Date.now() - 1000000000).toISOString(), total: 45, items: 'Item A' },
-            { id: '2', date: new Date(Date.now() - 500000000).toISOString(), total: 120, items: 'Item B' },
-            { id: '3', date: new Date().toISOString(), total: 85, items: 'Item C' }
+        // Use real orders if they exist, else use placeholders for a cold start
+        const hasRealOrders = orders.length > 0;
+        const data = hasRealOrders ? orders : [
+            { id: 'placeholder-1', date: new Date(Date.now() - 1000000000).toISOString(), total: 0, items: 'None' }
         ];
 
-        const history = data.map(o => ({ date: new Date(o.date).toLocaleDateString(), value: o.total })).reverse();
+        const history = data.map(o => ({ 
+            date: new Date(o.date).toLocaleDateString(), 
+            value: o.total 
+        })).reverse();
         
-        // Mock Preferences based on string matching or random if sparse
-        const prefs: Record<string, number> = { 'Organic': 0, 'Extract': 0, 'Edible': 0 };
-        data.forEach(o => {
-            if (o.total > 100) prefs['Extract'] += 1;
-            else if (o.total > 50) prefs['Organic'] += 1;
-            else prefs['Edible'] += 1;
-        });
+        const prefs: Record<string, number> = { 'Organic': 0, 'Extract': 1, 'Edible': 0 };
+        if (hasRealOrders) {
+            orders.forEach(o => {
+                if (o.total > 150) prefs['Extract'] += 1;
+                else if (o.total > 50) prefs['Organic'] += 1;
+                else prefs['Edible'] += 1;
+            });
+        }
+        
         const pieData = Object.entries(prefs).map(([name, value]) => ({ name, value }));
-        
         const total = orders.reduce((a,b) => a + b.total, 0);
 
         return { historyData: history, preferenceData: pieData, totalSpent: total };

@@ -1,5 +1,3 @@
-
-
 // --- EXISTING TYPES ---
 export interface BatchExpense {
   id: string;
@@ -34,7 +32,8 @@ export interface Batch {
   currentStock: number;
   status: 'Active' | 'Low' | 'Sold Out';
   dateAdded: string;
-  notes?: string; 
+  notes?: string;
+  isVisibleToCustomer?: boolean; // NEW: Controls visibility in Ghost Portal
 }
 
 export interface Sale {
@@ -83,6 +82,7 @@ export interface AppSettings {
   commissionRate: number; 
   appPin: string; 
   themeConfig?: ThemeConfig;
+  storefrontMessage?: string; // NEW: Message for Ghost Portal
   
   // REPUTATION SYSTEM
   auditLevel: 'NONE' | 'PENDING' | 'VERIFIED' | 'ELITE';
@@ -106,7 +106,7 @@ export interface POSState {
     paymentMethod: 'CASH' | 'BANK';
 }
 
-export type ViewState = 'DASHBOARD' | 'STOCK' | 'POS' | 'CUSTOMERS' | 'ANALYTICS' | 'LEDGER' | 'SETTINGS' | 'PLANNER' | 'NETWORK' | 'MARKET_GAME' | 'PROFILE' | 'MISSIONS' | 'SKILLS';
+export type ViewState = 'DASHBOARD' | 'STOCK' | 'POS' | 'CUSTOMERS' | 'ANALYTICS' | 'LEDGER' | 'SETTINGS' | 'PLANNER' | 'NETWORK' | 'MARKET_GAME' | 'PROFILE' | 'MISSIONS' | 'SKILLS' | 'CASINO';
 
 export interface Partner {
     id: string;

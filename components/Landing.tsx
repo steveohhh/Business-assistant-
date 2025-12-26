@@ -1,128 +1,122 @@
-import React, { useState, useEffect } from 'react';
-import { Shield, Ghost, ArrowRight, Settings, Download, X, Zap, Wifi, Database } from 'lucide-react';
-import { useAppStore } from '../stores/useAppStore';
+import React, { useState, useEffect, useRef } from 'react';
+import { motion, useMotionValue, useTransform, AnimatePresence } from 'framer-motion';
 
-interface BootSequenceProps {
-    onSelectOperator: () => void;
-    onConnectGhost: (channelId: string) => void;
+const GRID_SIZE = { rows: 25, cols: 40 };
+const CUBE_SIZE = 30;
+
+interface LandingProps {
+    onEnter: () => void;
 }
 
-const BOOT_MESSAGES = [
-    { text: 'INITIATING SMP-AI KERNEL V2.6.0...', delay: 100 },
-    { text: 'LOADING NEURAL INTERFACE...', delay: 300 },
-    { text: 'CHECKING SECURE UPLINK...', delay: 200 },
-    { text: 'CONNECTION ESTABLISHED.', delay: 500, color: 'text-cyber-green' },
-    { text: 'DECRYPTING DATA STREAMS...', delay: 400 },
-    { text: 'ACCESS PROTOCOL:', delay: 800 },
-];
-
-const BootSequence: React.FC<BootSequenceProps> = ({ onSelectOperator, onConnectGhost }) => {
-    const [bootLog, setBootLog] = useState<any[]>([]);
-    const [sequenceComplete, setSequenceComplete] = useState(false);
-    const [showOptions, setShowOptions] = useState(false);
-
-    const highFidelityMode = useAppStore(s => s.highFidelityMode);
-    const toggleHighFidelityMode = useAppStore(s => s.toggleHighFidelityMode);
-    const isInstallable = useAppStore(s => s.isInstallable);
-    const triggerInstallPrompt = useAppStore(s => s.triggerInstallPrompt);
+const Cube: React.FC<{ mouseX: any, mouseY: any, row: number, col: number }> = ({ mouseX, mouseY, row, col }) => {
+    const ref = useRef<HTMLDivElement>(null);
+    const [elementX, setElementX] = useState(0);
+    const [elementY, setElementY] = useState(0);
 
     useEffect(() => {
-        let timer = 0;
-        BOOT_MESSAGES.forEach((msg, index) => {
-            timer += msg.delay;
-            setTimeout(() => {
-                setBootLog(prev => [...prev, msg]);
-                if (index === BOOT_MESSAGES.length - 1) {
-                    setTimeout(() => setSequenceComplete(true), 500);
-                }
-            }, timer);
-        });
+        if (ref.current) {
+            const rect = ref.current.getBoundingClientRect();
+            setElementX(rect.left + rect.width / 2);
+            setElementY(rect.top + rect.height / 2);
+        }
     }, []);
 
-    const handleGhostConnect = () => {
-        // For simplicity, we use a placeholder that CustomerPortal will handle.
-        onConnectGhost("GHOST-CONNECT");
-    }
+    const dx = useTransform(() => elementX - mouseX.get());
+    const dy = useTransform(() => elementY - mouseY.get());
+    const distance = useTransform(() => Math.sqrt(dx.get() ** 2 + dy.get() ** 2));
+    
+    const scale = useTransform(distance, [0, 200, 400], [1.5, 1.2, 1]);
+    const opacity = useTransform(distance, [0, 200, 350], [0.8, 0.4, 0.1]);
+    const rotateX = useTransform(dy, [-200, 200], [15, -15]);
+    const rotateY = useTransform(dx, [-200, 200], [-15, 15]);
 
     return (
-        <div className="min-h-screen bg-black flex items-center justify-center p-6 relative overflow-hidden font-mono">
-            {/* Background FX */}
-            <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:30px_30px] opacity-50 animate-pulse-slow"></div>
-            <div className="absolute inset-0 bg-gradient-radial from-transparent to-black pointer-events-none"></div>
-
-            <div className="w-full max-w-2xl text-left">
-                <div className="bg-black/80 backdrop-blur-sm border border-white/10 rounded-xl p-6 shadow-2xl h-96 flex flex-col">
-                    <div className="flex-1 overflow-y-auto custom-scrollbar pr-4">
-                        {bootLog.map((msg, i) => (
-                            <p key={i} className={`text-xs md:text-sm animate-fade-in ${msg.color || 'text-gray-400'}`}>
-                                <span className="text-gray-600 mr-2">&gt;</span>{msg.text}
-                            </p>
-                        ))}
-                    </div>
-
-                    {sequenceComplete && (
-                        <div className="mt-auto pt-4 border-t border-white/10 animate-fade-in">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <button onClick={onSelectOperator} className="group flex items-center justify-between p-4 bg-white/5 hover:bg-cyber-gold hover:text-black border border-white/10 hover:border-cyber-gold rounded-lg transition-all">
-                                    <div className="flex items-center gap-3">
-                                        <Shield className="text-cyber-gold group-hover:text-black" />
-                                        <span className="font-bold uppercase tracking-wider">Operator</span>
-                                    </div>
-                                    <ArrowRight className="group-hover:translate-x-1 transition-transform"/>
-                                </button>
-                                <button onClick={handleGhostConnect} className="group flex items-center justify-between p-4 bg-white/5 hover:bg-cyber-green hover:text-black border border-white/10 hover:border-cyber-green rounded-lg transition-all">
-                                     <div className="flex items-center gap-3">
-                                        <Ghost className="text-cyber-green group-hover:text-black" />
-                                        <span className="font-bold uppercase tracking-wider">Ghost Portal</span>
-                                    </div>
-                                    <ArrowRight className="group-hover:translate-x-1 transition-transform"/>
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                </div>
-                
-                <div className="text-center mt-4">
-                     <button onClick={() => setShowOptions(true)} className="text-gray-600 hover:text-white text-xs uppercase font-bold flex items-center gap-2 mx-auto">
-                        <Settings size={12}/> System Options
-                    </button>
-                </div>
-            </div>
-
-            {/* System Options Modal */}
-            {showOptions && (
-                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-                    <div className="bg-cyber-panel border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl relative">
-                        <button onClick={() => setShowOptions(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white"><X size={20}/></button>
-                        <h3 className="text-lg font-bold text-white uppercase mb-6 flex items-center gap-2"><Database size={16}/> System Options</h3>
-                        
-                        <div className="space-y-4">
-                            <div className="flex justify-between items-center bg-white/5 p-4 rounded-lg border border-white/5">
-                                <div>
-                                    <label className="font-bold text-white flex items-center gap-2"><Zap size={14}/> High Fidelity Mode</label>
-                                    <p className="text-[10px] text-gray-500">Enable GPU-accelerated background effects.</p>
-                                </div>
-                                <button onClick={toggleHighFidelityMode} className={`w-12 h-6 rounded-full p-1 transition-colors ${highFidelityMode ? 'bg-cyber-green' : 'bg-gray-700'}`}>
-                                    <div className={`w-4 h-4 bg-white rounded-full transition-transform ${highFidelityMode ? 'translate-x-6' : 'translate-x-0'}`}></div>
-                                </button>
-                            </div>
-
-                            {isInstallable && (
-                                <button onClick={triggerInstallPrompt} className="w-full flex items-center justify-between p-4 bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg text-left transition-colors">
-                                    <div>
-                                        <label className="font-bold text-white flex items-center gap-2"><Download size={14}/> Install to Device</label>
-                                        <p className="text-[10px] text-gray-500">Add SMP-AI to your home screen for a native app experience.</p>
-                                    </div>
-                                    <ArrowRight />
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                 </div>
-            )}
-
-        </div>
+        <motion.div
+            ref={ref}
+            style={{
+                width: CUBE_SIZE,
+                height: CUBE_SIZE,
+                scale,
+                opacity,
+                rotateX,
+                rotateY,
+                transformStyle: 'preserve-3d',
+                background: 'rgba(212, 175, 55, 0.05)',
+                border: '1px solid rgba(212, 175, 55, 0.1)',
+                boxShadow: '0 0 5px rgba(212, 175, 55, 0.1)',
+            }}
+            className="transition-colors duration-500"
+        />
     );
 };
 
-export default BootSequence;
+const Landing: React.FC<LandingProps> = ({ onEnter }) => {
+    const mouseX = useMotionValue(Infinity);
+    const mouseY = useMotionValue(Infinity);
+    const [isExiting, setIsExiting] = useState(false);
+
+    const handleEnter = () => {
+        setIsExiting(true);
+        setTimeout(onEnter, 1000); // Allow time for exit animation
+    };
+
+    return (
+        <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 1 }}
+            className="h-screen w-screen bg-black flex items-center justify-center perspective-800"
+            onMouseMove={e => { mouseX.set(e.clientX); mouseY.set(e.clientY); }}
+            onMouseLeave={() => { mouseX.set(Infinity); mouseY.set(Infinity); }}
+        >
+            <AnimatePresence>
+                {!isExiting && (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.5 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.8 }}
+                        transition={{ duration: 0.8, ease: 'backOut' }}
+                    >
+                        <div
+                            className="grid"
+                            style={{
+                                gridTemplateColumns: `repeat(${GRID_SIZE.cols}, 1fr)`,
+                                gap: '2px',
+                                transform: 'rotateX(60deg) scale(1.2)'
+                            }}
+                        >
+                            {Array.from({ length: GRID_SIZE.rows * GRID_SIZE.cols }).map((_, i) => {
+                                const row = Math.floor(i / GRID_SIZE.cols);
+                                const col = i % GRID_SIZE.cols;
+                                return <Cube key={i} mouseX={mouseX} mouseY={mouseY} row={row} col={col} />;
+                            })}
+                        </div>
+
+                        <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
+                             <motion.button
+                                onClick={handleEnter}
+                                className="group relative w-32 h-32 rounded-full border-2 border-cyber-gold/50 bg-black/50 backdrop-blur-sm flex flex-col items-center justify-center text-cyber-gold font-mono uppercase text-sm tracking-widest shadow-[0_0_30px_rgba(212,175,55,0.3)]"
+                                whileHover={{ scale: 1.1, boxShadow: '0 0 50px rgba(212, 175, 55, 0.6)' }}
+                                transition={{ type: 'spring', stiffness: 300 }}
+                            >
+                                <motion.div 
+                                    className="absolute inset-0 border-2 border-cyber-gold rounded-full"
+                                    animate={{ rotate: 360, scale: [1, 1.1, 1] }}
+                                    transition={{ repeat: Infinity, duration: 8, ease: "linear" }}
+                                />
+                                <span className="z-10">NEXUS</span>
+                                <span className="z-10 text-xs opacity-70">Core</span>
+                            </motion.button>
+                            <p className="mt-8 text-xs text-gray-500 uppercase tracking-[0.3em]">
+                                Click Core to Initialize System
+                            </p>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </motion.div>
+    );
+};
+
+export default Landing;

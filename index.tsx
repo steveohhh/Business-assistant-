@@ -1,29 +1,32 @@
-
 import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App';
+import { createRoot } from 'react-dom/client';
+import App from './App.tsx';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
-  throw new Error("Could not find root element to mount to");
+  throw new Error("Target container 'root' not found. Check index.html.");
 }
 
-// Register Service Worker for PWA support
+try {
+  const root = createRoot(rootElement);
+  root.render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  );
+} catch (error) {
+  console.error("Critical Failure during application mount:", error);
+}
+
+// Service Worker Registration - Relative path to resolve same-origin scope issues
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then(registration => {
-        console.log('SW registered: ', registration);
+    navigator.serviceWorker.register('./sw.js', { scope: './' })
+      .then(reg => {
+        console.log('SMP-AI Kernel Service Worker Active:', reg.scope);
       })
-      .catch(registrationError => {
-        console.log('SW registration failed: ', registrationError);
+      .catch(err => {
+        console.warn('Service Worker registration deferred:', err.message);
       });
   });
 }
-
-const root = ReactDOM.createRoot(rootElement);
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);

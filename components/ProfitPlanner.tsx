@@ -8,11 +8,10 @@ interface ProfitPlannerProps {
 }
 
 const ProfitPlanner: React.FC<ProfitPlannerProps> = ({ onNavigateToPOS }) => {
-  const { batches, stageTransaction, settings } = useAppStore(state => ({
-    batches: state.batches,
-    stageTransaction: state.stageTransaction,
-    settings: state.settings,
-  }));
+  const batches = useAppStore(state => state.batches);
+  const stageTransaction = useAppStore(state => state.stageTransaction);
+  const settings = useAppStore(state => state.settings);
+  
   const [selectedBatchId, setSelectedBatchId] = useState('');
   
   // Scenario State

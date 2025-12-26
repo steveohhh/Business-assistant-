@@ -59,6 +59,7 @@ const MissionCard: React.FC<{ mission: Mission, onClaim: (id: string) => void }>
 };
 
 const Missions: React.FC = () => {
+    // REFACTORED: Atomic store access
     const missions = useAppStore(s => s.missions);
     const claimMissionReward = useAppStore(s => s.claimMissionReward);
 

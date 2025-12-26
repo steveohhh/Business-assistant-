@@ -1,3 +1,21 @@
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "vite": "https://esm.sh/vite@^7.3.0",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
+    "zustand": "https://esm.sh/zustand@^5.0.9",
+    "zustand/": "https://esm.sh/zustand@^5.0.9/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.34.0",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "recharts": "https://esm.sh/recharts@^3.6.0",
+    "framer-motion": "https://esm.sh/framer-motion@^12.23.26",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@^2.89.0"
+  }
+}
+</script>
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -33,9 +51,7 @@
                 'fade-in': 'fadeIn 0.4s ease-out forwards',
                 'slide-in': 'slideIn 0.3s ease-out forwards',
                 'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                'bleed-pulse': 'bleed 4s ease-in-out infinite',
-                'thrive-pulse': 'thrive 6s ease-in-out infinite',
+                'scan': 'scan 6s linear infinite',
             },
             keyframes: {
                 fadeIn: {
@@ -46,13 +62,9 @@
                     '0%': { opacity: '0', transform: 'translateX(20px)' },
                     '100%': { opacity: '1', transform: 'translateX(0)' },
                 },
-                bleed: {
-                    '0%, 100%': { boxShadow: 'inset 0 0 50px rgba(220, 38, 38, 0.2)' },
-                    '50%': { boxShadow: 'inset 0 0 150px rgba(220, 38, 38, 0.6)' }
-                },
-                thrive: {
-                    '0%, 100%': { boxShadow: 'inset 0 0 50px rgba(16, 185, 129, 0.1)' },
-                    '50%': { boxShadow: 'inset 0 0 100px rgba(212, 175, 55, 0.2)' }
+                scan: {
+                    '0%': { transform: 'translateY(-100%)' },
+                    '100%': { transform: 'translateY(100vh)' }
                 }
             }
           }
@@ -70,40 +82,62 @@
       body {
         background-color: #050505;
         color: #e5e5e5;
+        margin: 0;
+        padding: 0;
         overflow: hidden; 
         overscroll-behavior-y: none;
+        font-family: 'Inter', sans-serif;
+        cursor: crosshair;
       }
       
       #root {
-        perspective: 1200px;
         height: 100vh;
         width: 100vw;
         overflow: hidden;
-        position: fixed;
+        position: relative;
+        z-index: 1;
       }
       
-      /* Reactive Cyberpunk Grid Background */
+      /* HIGH FIDELITY VISUAL LAYERS */
       .cyber-grid-bg {
-        background-size: 50px 50px;
+        background-size: 40px 40px;
         background-image:
-          linear-gradient(to right, rgba(255, 255, 255, var(--grid-opacity)) 1px, transparent 1px),
-          linear-gradient(to bottom, rgba(255, 255, 255, var(--grid-opacity)) 1px, transparent 1px);
-        
-        /* Parallax effect based on mouse position */
-        transform: perspective(500px) rotateX(calc((var(--mouse-y) - 0.5) * 2deg)) rotateY(calc((var(--mouse-x) - 0.5) * -2deg)) translateZ(-50px);
-        transform-origin: center center;
-        transition: transform 0.1s ease-out;
-        
-        mask-image: radial-gradient(circle at center, black 0%, transparent 80%);
-        -webkit-mask-image: radial-gradient(circle at center, black 0%, transparent 80%);
-        
+          linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
         position: fixed;
-        inset: -10%;
-        width: 120%;
-        height: 120%;
+        inset: 0;
         z-index: 0;
         pointer-events: none;
-        animation: gridPulse var(--pulse-rate) ease-in-out infinite;
+      }
+
+      .scan-line {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 3px;
+        background: linear-gradient(to bottom, transparent, rgba(212, 175, 55, 0.15), transparent);
+        z-index: 50;
+        pointer-events: none;
+        animation: scan 8s linear infinite;
+        box-shadow: 0 0 10px rgba(212, 175, 55, 0.1);
+      }
+
+      .crt-grain {
+        position: fixed;
+        inset: 0;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
+        z-index: 45;
+        pointer-events: none;
+        opacity: 0.3;
+      }
+
+      .vignette {
+        position: fixed;
+        inset: 0;
+        background: radial-gradient(circle at center, transparent 60%, rgba(0,0,0,0.6) 100%);
+        z-index: 46;
+        pointer-events: none;
       }
 
       @keyframes gridPulse {
@@ -111,84 +145,28 @@
         50% { opacity: 1; }
       }
 
-      /* Custom Scrollbar */
-      ::-webkit-scrollbar {
-        width: 6px;
-        height: 6px;
-      }
-      ::-webkit-scrollbar-track {
-        background: transparent; 
-      }
-      ::-webkit-scrollbar-thumb {
-        background: rgba(255, 255, 255, 0.1); 
-        border-radius: 10px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: rgba(212, 175, 55, 0.5); 
-      }
-      
       .bg-cyber-panel {
           background-color: rgba(18, 18, 18, 0.85);
           backdrop-filter: blur(16px);
           -webkit-backdrop-filter: blur(16px);
+          border: 1px solid rgba(255, 255, 255, 0.1);
       }
       
-      .text-outline {
-          text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
-      }
-      
-      .text-shadow-glow {
-          text-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
-      }
-      
-      /* Utility for hiding scrollbar but allowing scroll */
       .custom-scrollbar::-webkit-scrollbar {
         width: 4px;
       }
-
-      /* ATMOSPHERE STATES */
-      .status-critical {
-          filter: contrast(120%) brightness(80%) sepia(20%) hue-rotate(-30deg);
-      }
-      
-      .status-critical .bg-cyber-panel {
-          border-color: rgba(220, 38, 38, 0.3) !important;
-          background-color: rgba(10, 0, 0, 0.9) !important;
-      }
-
-      .status-thriving {
-          filter: contrast(105%) saturate(110%);
-      }
-      
-      .status-thriving .bg-cyber-panel {
-          border-color: rgba(16, 185, 129, 0.3) !important;
-          box-shadow: 0 0 20px rgba(16, 185, 129, 0.05);
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: rgba(212, 175, 55, 0.3);
+        border-radius: 10px;
       }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react": "https://aistudiocdn.com/react@^19.2.1",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
-    "react/": "https://aistudiocdn.com/react@^19.2.1/",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.32.0",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.556.0",
-    "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
-    "vite": "https://aistudiocdn.com/vite@^7.2.7",
-    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.2",
-    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@^2.87.1",
-    "framer-motion": "https://esm.sh/framer-motion@^12.23.26",
-    "zustand": "https://esm.sh/zustand@^5.1.1",
-    "zustand/middleware": "https://esm.sh/zustand@^5.1.1/middleware",
-    "zustand/": "https://esm.sh/zustand@^5.0.9/"
-  }
-}
-</script>
-<link rel="stylesheet" href="/index.css">
-</head>
+  </head>
   <body>
-    <div id="root"></div>
     <div class="cyber-grid-bg"></div>
-    <script type="module" src="/index.tsx"></script>
+    <div class="crt-grain"></div>
+    <div class="vignette"></div>
+    <div class="scan-line"></div>
+    <div id="root"></div>
+    <script type="module" src="./index.tsx"></script>
   </body>
 </html>

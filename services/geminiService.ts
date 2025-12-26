@@ -1,12 +1,10 @@
-
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { Customer, ArchetypeProfile, Sale, Batch, BusinessIntelligence, Achievement, InventoryType } from '../types';
 import { customerPerksData } from '../data/customer_perks';
 
+// Updated initialization to strictly match guidelines using process.env.API_KEY directly
 const getClient = () => {
-  const apiKey = process.env.API_KEY || ''; 
-  return new GoogleGenAI({ apiKey });
+  return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
 // --- IMAGE GENERATION ---
@@ -68,6 +66,7 @@ export const generateAvatar = async (
             }
         });
         
+        // Find the image part iterating through parts as per guidelines
         for (const part of response.candidates?.[0]?.content?.parts || []) {
             if (part.inlineData && part.inlineData.data) {
                 return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
@@ -122,6 +121,7 @@ export const generateAppTheme = async (
             }
         });
         
+        // Find the image part iterating through parts as per guidelines
         for (const part of response.candidates?.[0]?.content?.parts || []) {
             if (part.inlineData && part.inlineData.data) {
                 return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
@@ -176,6 +176,7 @@ export const analyzeCustomerProfile = async (customer: Customer, history: Sale[]
   
   try {
     const response = await ai.models.generateContent({ model: 'gemini-3-pro-preview', contents: prompt, config: { responseMimeType: "application/json" } });
+    // Correct extraction using .text property as per guidelines
     const text = response.text;
     if (!text) return null;
     const result = JSON.parse(text);
@@ -192,6 +193,7 @@ export const generateBusinessIntelligence = async (batches: Batch[], sales: Sale
     const prompt = `ACT AS PREDICTIVE ANALYST. STOCK: ${JSON.stringify(stockData)}. SALES: ${JSON.stringify(recentSales.map(s => ({ date: s.timestamp, batch: s.batchName, weight: s.weight, amount: s.amount })))}. TASKS: Burn rate, stockout dates, 7-day forecast, archetype analysis. Output JSON schema for BusinessIntelligence.`;
     try {
         const response = await ai.models.generateContent({ model: 'gemini-3-pro-preview', contents: prompt, config: { responseMimeType: "application/json" } });
+        // Correct extraction using .text property as per guidelines
         const text = response.text;
         if (!text) return null;
         const bi = JSON.parse(text) as BusinessIntelligence;
@@ -210,6 +212,7 @@ export const generateDailyBriefing = async (sales: Sale[], batches: Batch[], cus
     const prompt = `Executive Assistant Briefing. Date: ${today}. Revenue: $${revenueToday}. Tx: ${todaysSales.length}. Alerts: ${lowStockBatches.join(', ') || "None"}. Active Clients: ${customers.length}. Tone: Cyberpunk Professional. Max 3 sentences.`;
     try {
         const response = await ai.models.generateContent({ model: 'gemini-3-pro-preview', contents: prompt });
+        // Correct extraction using .text property as per guidelines
         return response.text;
     } catch (e) { return "System offline."; }
 }

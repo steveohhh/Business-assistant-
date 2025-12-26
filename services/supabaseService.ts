@@ -1,4 +1,3 @@
-
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 // --- NETWORK CONFIGURATION ---
@@ -60,6 +59,40 @@ export const updateProfileStats = async (netWorth: number, reputation: number, i
         username: alias,
         updated_at: new Date().toISOString()
     }).eq('id', user.id);
+};
+
+// --- CLOUD PERSISTENCE ---
+export const saveToCloud = async (backupData: any) => {
+    if (!supabase) return { success: false, error: 'OFFLINE' };
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+        const u = await signInAnonymously();
+        if (!u) return { success: false, error: 'AUTH_FAILED' };
+    }
+    
+    // We use the 'profiles' table 'metadata' column (jsonb) to store the save state
+    // Ideally use a dedicated 'saves' table, but this works for the template schema
+    const { error } = await supabase.from('profiles').update({
+        metadata: backupData,
+        updated_at: new Date().toISOString()
+    }).eq('id', user?.id || (await supabase.auth.getUser()).data.user?.id);
+
+    return { success: !error, error: error?.message };
+};
+
+export const loadFromCloud = async () => {
+    if (!supabase) return null;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data, error } = await supabase
+        .from('profiles')
+        .select('metadata')
+        .eq('id', user.id)
+        .single();
+
+    if (error || !data) return null;
+    return data.metadata;
 };
 
 export const subscribeToLeaderboard = (callback: (payload: any) => void) => {

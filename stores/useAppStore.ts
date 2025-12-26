@@ -6,13 +6,52 @@ import {
   Referral, Financials, Achievement, InventoryType, InventoryTerms,
   ChatMessage, Mission
 } from '../types';
-import { generateAvatar } from '../services/geminiService';
 import { getSupabase } from '../services/supabaseService';
 import { scramble, unscramble } from '../services/cryptoUtils';
 import { missionsData } from '../data/missions';
 import { skillsData } from '../data/skills';
 
-// --- STORE TYPE DEFINITION ---
+const getInventoryTerms = (type: InventoryType): InventoryTerms => {
+    switch (type) {
+        case 'GRASS':
+            return { unit: 'g', productTypeLabel: 'Strain Type', stockLabel: 'Weight', strainLabel: 'Strain', variant1: 'Rock (Flower)', variant2: 'Wet (Extract)' };
+        case 'GLASS':
+            return { unit: 'g', productTypeLabel: 'Structure', stockLabel: 'Weight', strainLabel: 'Batch', variant1: 'Shard', variant2: 'Powder' };
+        case 'LIQUID':
+            return { unit: 'ml', productTypeLabel: 'Viscosity', stockLabel: 'Volume', strainLabel: 'Mix', variant1: 'Thick', variant2: 'Thin' };
+        default:
+            return { unit: 'g', productTypeLabel: 'Type', stockLabel: 'Stock', strainLabel: 'Item', variant1: 'Type A', variant2: 'Type B' };
+    }
+};
+
+const recalculateBatchCost = (b: Batch): Batch => {
+  const extraExpenses = b.expenses ? b.expenses.reduce((acc, e) => acc + e.amount, 0) : 0;
+  const totalCost = b.purchasePrice + b.fees + extraExpenses;
+  const sellableWeight = Math.max(0.1, b.orderedWeight - b.providerCut - b.personalUse - (b.loss || 0));
+  const trueCostPerGram = sellableWeight > 0 ? totalCost / sellableWeight : 0;
+  return { ...b, actualWeight: sellableWeight, trueCostPerGram, currentStock: Math.min(b.currentStock, sellableWeight) };
+};
+
+const defaultSettings: AppSettings = {
+    inventoryType: 'GRASS',
+    defaultPricePerGram: 10,
+    defaultWholesalePrice: 6,
+    defaultCostEstimate: 3,
+    currencySymbol: '$',
+    lowStockThreshold: 28,
+    staffMembers: ['Admin'],
+    expenseCategories: ['Payout', 'Supplies', 'Transport', 'Marketing', 'Misc'],
+    commissionRate: 5,
+    appPin: '',
+    auditLevel: 'NONE',
+    reputationScore: 500,
+    operatorAlias: 'Unknown_Operator',
+    publicDealerId: '1',
+    skillPoints: 0,
+    unlockedSkills: [],
+    storefrontMessage: 'System is online. Place orders through the terminal.'
+};
+
 interface AppState {
   batches: Batch[];
   customers: Customer[];
@@ -34,9 +73,10 @@ interface AppState {
   missions: Mission[];
   storeChannelId: string;
   chatMessages: ChatMessage[];
+  isInitialized: boolean;
   
-  // Actions
-  initialize: () => void;
+  initialize: () => (() => void);
+  updateStorefront: (message: string, visibleBatchIds: string[]) => void;
   claimMissionReward: (missionId: string) => void;
   unlockSkill: (skillId: string) => void;
   sendManagerMessage: (text: string) => void;
@@ -68,50 +108,11 @@ interface AppState {
   removeNotification: (id: string) => void;
   loadBackup: (data: BackupData) => void;
   triggerPrestige: (customerId: string) => void;
-  _setChatMessages: (messages: ChatMessage[]) => void;
-  _setStoreChannelId: (id: string) => void;
-  _setBatches: (batches: Batch[]) => void;
-  _setCustomers: (customers: Customer[]) => void;
 }
 
-// --- TERMINOLOGY HELPER ---
-const getInventoryTerms = (type: InventoryType): InventoryTerms => {
-    switch (type) {
-        case 'GRASS':
-            return { unit: 'g', productTypeLabel: 'Strain Type', stockLabel: 'Weight', strainLabel: 'Strain', variant1: 'Rock (Flower)', variant2: 'Wet (Extract)' };
-        case 'GLASS':
-            return { unit: 'g', productTypeLabel: 'Structure', stockLabel: 'Weight', strainLabel: 'Batch', variant1: 'Shard', variant2: 'Powder' };
-        case 'LIQUID':
-            return { unit: 'ml', productTypeLabel: 'Viscosity', stockLabel: 'Volume', strainLabel: 'Mix', variant1: 'Thick', variant2: 'Thin' };
-        default:
-            return { unit: 'g', productTypeLabel: 'Type', stockLabel: 'Stock', strainLabel: 'Item', variant1: 'Type A', variant2: 'Type B' };
-    }
-};
-
-const defaultSettings: AppSettings = {
-    inventoryType: 'GRASS',
-    defaultPricePerGram: 10,
-    defaultWholesalePrice: 6,
-    defaultCostEstimate: 3,
-    currencySymbol: '$',
-    lowStockThreshold: 28,
-    staffMembers: ['Admin'],
-    expenseCategories: ['Payout', 'Supplies', 'Transport', 'Marketing', 'Misc'],
-    commissionRate: 5,
-    appPin: '',
-    auditLevel: 'NONE',
-    reputationScore: 500,
-    operatorAlias: 'Unknown_Operator',
-    publicDealerId: '1',
-    skillPoints: 0,
-    unlockedSkills: []
-};
-
-// --- ZUSTAND STORE CREATION ---
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
-      // --- STATE ---
       batches: [],
       customers: [],
       sales: [],
@@ -135,216 +136,139 @@ export const useAppStore = create<AppState>()(
       missions: missionsData,
       storeChannelId: '',
       chatMessages: [],
+      isInitialized: false,
 
-      // --- ACTIONS ---
       initialize: () => {
-        // This function is called once in App.tsx to setup listeners.
-        // The `persist` middleware handles loading from localStorage automatically.
-        // We just need to setup non-serializable stuff here.
+        if (get().isInitialized) return () => {};
+        set({ isInitialized: true });
 
-        // PWA Install Listener
-        const handler = (e: any) => {
+        const installHandler = (e: any) => {
           e.preventDefault();
-          get().setDeferredPrompt(e);
-          set({ isInstallable: true });
+          set({ deferredPrompt: e, isInstallable: true });
         };
-        window.addEventListener('beforeinstallprompt', handler);
+        window.addEventListener('beforeinstallprompt', installHandler);
 
-        // Supabase/Chat Listener
         let cid = localStorage.getItem('smp_store_channel_id');
         if (!cid) {
             cid = 'store_' + Math.random().toString(36).substring(2, 15);
             localStorage.setItem('smp_store_channel_id', cid);
         }
-        get()._setStoreChannelId(cid);
+        set({ storeChannelId: cid });
 
         const sb = getSupabase();
+        let channel: any = null;
         if (sb && cid) {
-          const channel = sb.channel(cid);
+          channel = sb.channel(cid);
           channel
             .on('broadcast', { event: 'REQUEST_STOCK' }, () => {
-                channel.send({
-                    type: 'broadcast', event: 'STOCK_UPDATE',
-                    payload: get().batches
-                });
+                const visibleBatches = get().batches.filter(b => b.isVisibleToCustomer);
+                const storefrontMessage = get().settings.storefrontMessage;
+                channel.send({ type: 'broadcast', event: 'STOCK_UPDATE', payload: visibleBatches });
+                channel.send({ type: 'broadcast', event: 'STOREFRONT_UPDATE', payload: { message: storefrontMessage } });
             })
-            .on('broadcast', { event: 'NEW_ORDER' }, ({ payload }) => {
+            .on('broadcast', { event: 'NEW_ORDER' }, ({ payload }: any) => {
                 const order = payload;
-                let linkedCustomer = null;
-                if (order.ghostId) {
-                    linkedCustomer = get().customers.find(c => c.ghostId === order.ghostId);
-                }
-                const displayName = linkedCustomer ? linkedCustomer.name : (order.customer || "Ghost Guest");
-                get().addNotification(`New Remote Order from ${displayName}: $${order.total.toFixed(2)}`, 'SUCCESS');
-                if (order.items && order.items.length > 0) {
+                const linked = get().customers.find(c => c.ghostId === order.ghostId);
+                const name = linked ? linked.name : (order.customer || "Ghost Guest");
+                get().addNotification(`New Remote Order from ${name}`, 'SUCCESS');
+                if (order.items?.length > 0) {
                     const item = order.items[0];
                     get().stageTransaction({
                         batchId: item.batchId, weight: item.weight, amount: item.price * item.weight,
-                        customerName: displayName, customerId: linkedCustomer ? linkedCustomer.id : undefined,
-                        isRemote: true, ghostId: order.ghostId
+                        customerName: name, customerId: linked?.id, isRemote: true, ghostId: order.ghostId
                     });
                 }
             })
-            .on('broadcast', { event: 'CHAT_MESSAGE' }, ({ payload }) => {
-                const msg = payload;
-                if (msg.sender === 'CUSTOMER') {
-                    const decryptedText = unscramble(msg.text, cid!);
-                    const decryptedMsg = { ...msg, text: decryptedText };
-                    get()._setChatMessages([...get().chatMessages, decryptedMsg]);
-                    get().addNotification("New encrypted message received.", 'INFO');
+            .on('broadcast', { event: 'CHAT_MESSAGE' }, ({ payload }: any) => {
+                if (payload.sender === 'CUSTOMER') {
+                    const text = unscramble(payload.text, cid!);
+                    set(state => ({ chatMessages: [...state.chatMessages, { ...payload, text }] }));
+                    get().addNotification("Secure message received.", 'INFO');
                 }
             })
             .subscribe();
         }
 
-        // Mission Game Loop
-        setInterval(() => {
-          const { sales, customers, batches } = get();
-          set(state => ({
-            missions: state.missions.map(mission => {
-              if (mission.isComplete || !mission.check) return mission;
-              const progress = mission.check({ sales, customers, batches });
-              const isComplete = progress >= mission.goal;
-              if (isComplete && !mission.isComplete) {
-                  get().addNotification(`Contract Complete: ${mission.title}`, 'SUCCESS');
-              }
-              return { ...mission, progress, isComplete };
-            })
-          }));
-        }, 5000);
+        const missionInterval = setInterval(() => {
+          const { sales, customers, batches, missions } = get();
+          let changed = false;
+          const updatedMissions = missions.map(m => {
+            if (m.isClaimed) return m;
+            const progress = m.check({ sales, customers, batches });
+            const isComplete = progress >= m.goal;
+            if (isComplete && !m.isComplete) {
+              changed = true;
+              setTimeout(() => get().addNotification(`Contract Cleared: ${m.title}`, 'SUCCESS'), 0);
+            }
+            return { ...m, progress, isComplete };
+          });
+          if (changed) set({ missions: updatedMissions });
+        }, 15000);
+
+        return () => {
+            window.removeEventListener('beforeinstallprompt', installHandler);
+            clearInterval(missionInterval);
+            if (channel) channel.unsubscribe();
+            set({ isInitialized: false });
+        };
       },
-      
-      _setChatMessages: (messages) => set({ chatMessages: messages }),
-      _setStoreChannelId: (id) => set({ storeChannelId: id }),
-      _setBatches: (batches) => set({ batches: batches }),
-      _setCustomers: (customers) => set({ customers: customers }),
 
       addNotification: (message, type = 'INFO') => {
         const id = Date.now().toString();
         set(state => ({ notifications: [...state.notifications, { id, message, type }] }));
-        setTimeout(() => get().removeNotification(id), 4000);
+        setTimeout(() => set(state => ({ notifications: state.notifications.filter(n => n.id !== id) })), 4000);
       },
+
       removeNotification: (id) => set(state => ({ notifications: state.notifications.filter(n => n.id !== id) })),
       
-      updateSettings: (newSettings) => {
-        set(state => ({
-          settings: { ...state.settings, ...newSettings },
-          inventoryTerms: getInventoryTerms(newSettings.inventoryType || state.settings.inventoryType)
-        }));
-        get().addNotification("System settings saved.", 'SUCCESS');
-      },
+      updateSettings: (newS) => set(state => {
+          const updatedSettings = { ...state.settings, ...newS };
+          return {
+              settings: updatedSettings,
+              inventoryTerms: getInventoryTerms(updatedSettings.inventoryType)
+          };
+      }),
 
-      recalculateBatchCost: (b: Batch): Batch => {
-        const extraExpenses = b.expenses ? b.expenses.reduce((acc, e) => acc + e.amount, 0) : 0;
-        const totalCost = b.purchasePrice + b.fees + extraExpenses;
-        const sellableWeight = Math.max(0.1, b.orderedWeight - b.providerCut - b.personalUse - (b.loss || 0));
-        const trueCostPerGram = totalCost / sellableWeight;
-        return { ...b, actualWeight: sellableWeight, trueCostPerGram };
-      },
-      
       addBatch: (batch) => set(state => {
         const hasPacker = state.settings.unlockedSkills.includes('LOGISTICS_1');
-        const providerCutReduction = hasPacker ? 0.05 : 0;
-        const effectiveBatch = { ...batch, providerCut: batch.providerCut * (1 - providerCutReduction) };
-        const newBatch = state.recalculateBatchCost(effectiveBatch);
-        
-        // Broadcast stock update
-        const sb = getSupabase();
-        if(sb && state.storeChannelId) {
-            sb.channel(state.storeChannelId).send({
-                type: 'broadcast', event: 'STOCK_UPDATE',
-                payload: [newBatch, ...state.batches]
-            });
-        }
-
-        get().addNotification(`Batch "${batch.name}" added successfully.`, 'SUCCESS');
+        const newBatchWithDefaults = { ...batch, isVisibleToCustomer: false };
+        const updatedBatch = recalculateBatchCost({ ...newBatchWithDefaults, providerCut: batch.providerCut * (hasPacker ? 0.95 : 1) });
         return {
-          batches: [newBatch, ...state.batches],
+          batches: [updatedBatch, ...state.batches],
           financials: { ...state.financials, cashOnHand: state.financials.cashOnHand - (batch.purchasePrice + batch.fees) }
         }
       }),
 
       updateBatch: (batch) => set(state => {
-        const updatedBatch = state.recalculateBatchCost(batch);
-        get().addNotification(`Batch "${batch.name}" updated.`, 'SUCCESS');
-        const newBatches = state.batches.map(b => b.id === batch.id ? updatedBatch : b);
-        
-        // Broadcast stock update
-        const sb = getSupabase();
-        if(sb && state.storeChannelId) {
-            sb.channel(state.storeChannelId).send({
-                type: 'broadcast', event: 'STOCK_UPDATE',
-                payload: newBatches
-            });
-        }
-        
+        const updated = recalculateBatchCost(batch);
+        const newBatches = state.batches.map(b => b.id === batch.id ? updated : b);
+        // Do not broadcast here, let updateStorefront handle it
         return { batches: newBatches };
       }),
 
-      deleteBatch: (id) => set(state => {
-        get().addNotification("Batch deleted.", 'WARNING');
-        const newBatches = state.batches.filter(b => b.id !== id);
-         // Broadcast stock update
-        const sb = getSupabase();
-        if(sb && state.storeChannelId) {
-            sb.channel(state.storeChannelId).send({
-                type: 'broadcast', event: 'STOCK_UPDATE',
-                payload: newBatches
-            });
-        }
-        return { batches: newBatches };
-      }),
-      
-      addCustomer: (customer) => set(state => {
-        get().addNotification("New client registered.", 'SUCCESS');
-        return { customers: [customer, ...state.customers] };
-      }),
-
-      updateCustomer: (customer) => set(state => {
-        get().addNotification("Client data updated.", 'SUCCESS');
-        return { customers: state.customers.map(c => c.id === customer.id ? customer : c) };
-      }),
+      deleteBatch: (id) => set(state => ({ batches: state.batches.filter(b => b.id !== id) })),
+      addCustomer: (c) => set(state => ({ customers: [c, ...state.customers] })),
+      updateCustomer: (c) => set(state => ({ customers: state.customers.map(old => old.id === c.id ? c : old) })),
 
       processSale: (batchId, customerId, salesRep, weight, amount, profit, targetPrice, paymentMethod) => {
-        const { batches, customers, settings, addNotification, updateFinancials } = get();
+        const { batches, customers, settings } = get();
         const batch = batches.find(b => b.id === batchId);
         const customer = customers.find(c => c.id === customerId);
-
         if(!batch || !customer) return;
 
         const hasHaggler = settings.unlockedSkills.includes('TRADE_1');
-        const profitBonus = hasHaggler ? 0.02 : 0;
-        const finalProfit = profit * (1 + profitBonus);
+        const xpBoost = settings.unlockedSkills.includes('TRADE_2');
         
-        const hasXpBoost = settings.unlockedSkills.includes('TRADE_2');
-        const xpMultiplier = hasXpBoost ? 1.1 : 1.0;
-
-        const variance = amount - (weight * targetPrice);
+        const finalProfit = profit * (hasHaggler ? 1.02 : 1);
+        const earnedXP = Math.floor(amount * (xpBoost ? 1.1 : 1));
 
         const newSale: Sale = {
           id: Date.now().toString(), batchId, batchName: batch.name, customerId, customerName: customer.name,
           salesRep, weight, amount, costBasis: weight * batch.trueCostPerGram, profit: finalProfit,
-          variance: parseFloat(variance.toFixed(2)), paymentMethod, timestamp: new Date().toISOString()
+          variance: parseFloat((amount - (weight * targetPrice)).toFixed(2)), paymentMethod, timestamp: new Date().toISOString()
         };
 
-        const checkAchievements = (c: Customer): Achievement[] => {
-            const newAchievements: Achievement[] = [];
-            const currentIds = c.achievements.map(a => a.id);
-            const unlocked = (id: string, title: string, desc: string, icon: string, xp: number, rarity: 'COMMON' | 'UNCOMMON' | 'RARE' | 'LEGENDARY', discount: number) => {
-                if (!currentIds.includes(id)) {
-                    newAchievements.push({ id, title, description: desc, icon, xpValue: xp, unlockedAt: new Date().toISOString(), rarity, discountMod: discount });
-                }
-            };
-            // Simplified achievement logic from DataContext
-            if (amount >= 500) unlocked('the_plug', 'The Plug', 'Dropped $500+ in one go.', '🔌', 500, 'LEGENDARY', 5.0);
-            if (c.transactionHistory.length === 0) unlocked('fresh_meat', 'Fresh Meat', 'First time buyer.', '🥩', 100, 'COMMON', 0.5);
-            return newAchievements;
-        };
-
-        const earnedXP = Math.floor(amount * xpMultiplier);
-        const newAchievements = checkAchievements(customer);
-        const achievementXP = newAchievements.reduce((sum, a) => sum + a.xpValue, 0);
-        const totalNewXP = (customer.xp || 0) + earnedXP + achievementXP;
+        const totalNewXP = (customer.xp || 0) + earnedXP;
         const finalLevel = Math.floor(Math.sqrt(totalNewXP / 100)) + 1;
 
         const updatedCustomer: Customer = {
@@ -353,8 +277,7 @@ export const useAppStore = create<AppState>()(
             lastPurchase: newSale.timestamp,
             transactionHistory: [...customer.transactionHistory, newSale],
             xp: totalNewXP,
-            level: finalLevel,
-            achievements: [...(customer.achievements || []), ...newAchievements]
+            level: finalLevel
         };
 
         set(state => ({
@@ -368,115 +291,130 @@ export const useAppStore = create<AppState>()(
             },
             posState: { ...state.posState, weightInput: '', cashInput: '' }
         }));
-        
-        let notifMsg = `Sale Processed. +${earnedXP} XP.`;
-        if (newAchievements.length > 0) notifMsg += ` 🏆 ${newAchievements.length} Badges!`;
-        if (finalLevel > (customer.level || 1)) notifMsg += ` ⚡ LEVEL UP to ${finalLevel}!`;
-        addNotification(notifMsg, 'SUCCESS');
       },
-      
-      // Other actions...
-      addOperationalExpense: (expense) => set(state => {
-        get().addNotification("Drawer deduction recorded.", 'WARNING');
-        return {
-          operationalExpenses: [...state.operationalExpenses, expense],
-          financials: { ...state.financials, cashOnHand: state.financials.cashOnHand - expense.amount }
-        }
-      }),
+
+      addOperationalExpense: (e) => set(state => ({
+          operationalExpenses: [...state.operationalExpenses, e],
+          financials: { ...state.financials, cashOnHand: state.financials.cashOnHand - e.amount }
+      })),
       deleteOperationalExpense: (id) => set(state => ({ operationalExpenses: state.operationalExpenses.filter(e => e.id !== id) })),
-      addPartner: (partner) => set(state => ({ partners: [...state.partners, partner] })),
+      addPartner: (p) => set(state => ({ partners: [...state.partners, p] })),
       deletePartner: (id) => set(state => ({ partners: state.partners.filter(p => p.id !== id) })),
-      addReferral: (referral) => set(state => {
-        get().addNotification(`Referral logged. +$${referral.commission} to Wallet.`, 'SUCCESS');
-        return {
-          referrals: [...state.referrals, referral],
-          financials: { ...state.financials, cashOnHand: state.financials.cashOnHand + referral.commission },
-          partners: state.partners.map(p => p.id === referral.partnerId ? { ...p, totalVolumeGenerated: p.totalVolumeGenerated + referral.amount, totalCommissionEarned: p.totalCommissionEarned + referral.commission } : p)
-        }
-      }),
-      updateFinancials: (newFinancials) => set(state => ({ financials: { ...state.financials, ...newFinancials } })),
+      addReferral: (ref) => set(state => ({
+          referrals: [...state.referrals, ref],
+          financials: { ...state.financials, cashOnHand: state.financials.cashOnHand + ref.commission },
+          partners: state.partners.map(p => p.id === ref.partnerId ? { ...p, totalVolumeGenerated: p.totalVolumeGenerated + ref.amount, totalCommissionEarned: p.totalCommissionEarned + ref.commission } : p)
+      })),
+      updateFinancials: (f) => set(state => ({ financials: { ...state.financials, ...f } })),
       stageTransaction: (tx) => set({ stagedTransaction: tx }),
-      updatePOSState: (newState) => set(state => ({ posState: { ...state.posState, ...newState } })),
-      setBiData: (data) => set({ biData: data }),
+      updatePOSState: (pos) => set(state => ({ posState: { ...state.posState, ...pos } })),
+      setBiData: (bi) => set({ biData: bi }),
       toggleStealthMode: () => set(state => ({ stealthMode: !state.stealthMode })),
       toggleHighFidelityMode: () => set(state => ({ highFidelityMode: !state.highFidelityMode })),
+      setDeferredPrompt: (p) => set({ deferredPrompt: p }),
       triggerInstallPrompt: () => {
-        const { deferredPrompt, addNotification } = get();
+        const { deferredPrompt } = get();
         if(deferredPrompt) {
           deferredPrompt.prompt();
-          deferredPrompt.userChoice.then(({ outcome }: { outcome: string }) => {
-            if (outcome === 'accepted') {
-              addNotification("Installing Application...", 'SUCCESS');
-              set({ deferredPrompt: null, isInstallable: false });
-            }
+          deferredPrompt.userChoice.then(({ outcome }: any) => {
+            if (outcome === 'accepted') set({ deferredPrompt: null, isInstallable: false });
           });
         }
       },
-      setDeferredPrompt: (prompt) => set({ deferredPrompt: prompt }),
-      claimMissionReward: (missionId) => {
-        const { missions } = get();
-        const mission = missions.find(m => m.id === missionId);
-        if (!mission || !mission.isComplete || mission.isClaimed) return;
+      updateStorefront: (message, visibleBatchIds) => {
         set(state => ({
-          missions: state.missions.map(m => m.id === missionId ? { ...m, isClaimed: true } : m),
-          settings: { ...state.settings, reputationScore: state.settings.reputationScore + mission.rewards.rep, skillPoints: state.settings.skillPoints + mission.rewards.sp }
+            settings: { ...state.settings, storefrontMessage: message },
+            batches: state.batches.map(b => ({...b, isVisibleToCustomer: visibleBatchIds.includes(b.id)}))
         }));
-        get().addNotification(`Reward Claimed: +${mission.rewards.rep} REP, +${mission.rewards.sp} SP`, 'SUCCESS');
-      },
-      unlockSkill: (skillId) => {
-        const { settings, addNotification } = get();
-        const skill = skillsData.find(s => s.id === skillId);
-        if(!skill || settings.skillPoints < skill.cost || settings.unlockedSkills.includes(skillId) || !skill.dependencies.every(dep => settings.unlockedSkills.includes(dep))) {
-          addNotification("Unlock failed: Requirements not met.", "ERROR");
-          return;
+        const { storeChannelId, batches, settings } = get();
+        const sb = getSupabase();
+        const channel = sb?.channel(storeChannelId);
+        if (channel) {
+            const visibleBatches = batches.filter(b => b.isVisibleToCustomer);
+            channel.send({ type: 'broadcast', event: 'STOCK_UPDATE', payload: visibleBatches });
+            channel.send({ type: 'broadcast', event: 'STOREFRONT_UPDATE', payload: { message: settings.storefrontMessage } });
         }
-        set(state => ({
-          settings: { ...state.settings, skillPoints: state.settings.skillPoints - skill.cost, unlockedSkills: [...state.settings.unlockedSkills, skillId] }
-        }));
-        addNotification(`Skill Unlocked: ${skill.name}`, "SUCCESS");
       },
+      claimMissionReward: (id) => set(state => {
+        const mission = state.missions.find(m => m.id === id);
+        if (!mission || !mission.isComplete || mission.isClaimed) return state;
+        return {
+          missions: state.missions.map(m => m.id === id ? { ...m, isClaimed: true } : m),
+          settings: { ...state.settings, reputationScore: state.settings.reputationScore + mission.rewards.rep, skillPoints: state.settings.skillPoints + mission.rewards.sp }
+        }
+      }),
+      unlockSkill: (id) => set(state => {
+        const skill = skillsData.find(s => s.id === id);
+        if(!skill || state.settings.skillPoints < skill.cost) return state;
+        return { settings: { ...state.settings, skillPoints: state.settings.skillPoints - skill.cost, unlockedSkills: [...state.settings.unlockedSkills, id] } };
+      }),
       sendManagerMessage: (text) => {
-        const { storeChannelId, addNotification } = get();
+        const { storeChannelId } = get();
         const sb = getSupabase();
         if(!sb || !storeChannelId) return;
-        const encryptedText = scramble(text, storeChannelId);
+        const encrypted = scramble(text, storeChannelId);
         const msg: ChatMessage = { id: Date.now().toString(), sender: 'MANAGER', text, timestamp: new Date().toISOString(), isEncrypted: true };
         set(state => ({ chatMessages: [...state.chatMessages, msg] }));
-        sb.channel(storeChannelId).send({ type: 'broadcast', event: 'CHAT_MESSAGE', payload: { ...msg, text: encryptedText } });
+        sb.channel(storeChannelId).send({ type: 'broadcast', event: 'CHAT_MESSAGE', payload: { ...msg, text: encrypted } });
       },
       clearChat: () => set({ chatMessages: [] }),
-      loadBackup: (data) => {
-        // Omitting for brevity - assumes simple state replacement
-        set(state => ({...state, ...data}));
-        get().addNotification("Database restored.", "SUCCESS");
-      },
-      triggerPrestige: (customerId) => {
-        const { customers, addNotification } = get();
-        const customer = customers.find(c => c.id === customerId);
-        if (!customer || (customer.level || 1) < 50) {
-          addNotification("Prestige Requirements Not Met.", 'ERROR');
-          return;
+      loadBackup: (data: BackupData) => {
+        if (data.missions) {
+          const missionsWithLogic = missionsData.map(sourceMission => {
+            const storedMission = data.missions.find((m: Mission) => m.id === sourceMission.id);
+            if (storedMission) {
+              return {
+                ...sourceMission,
+                progress: storedMission.progress,
+                isComplete: storedMission.isComplete,
+                isClaimed: storedMission.isClaimed,
+              };
+            }
+            return sourceMission;
+          });
+          data.missions = missionsWithLogic;
         }
-        const updatedCustomer: Customer = { ...customer, level: 1, xp: 0, prestige: (customer.prestige || 0) + 1 };
-        set(state => ({ customers: state.customers.map(c => c.id === customerId ? updatedCustomer : c) }));
-        addNotification(`${customer.name} has entered Prestige!`, 'SUCCESS');
+        set(state => ({...state, ...data, isInitialized: false}));
       },
+      triggerPrestige: (id) => set(state => ({
+          customers: state.customers.map(c => c.id === id ? { ...c, level: 1, xp: 0, prestige: (c.prestige || 0) + 1 } : c)
+      })),
     }),
     {
-      name: 'smp-ai-storage', // name of the item in the storage (must be unique)
-      storage: createJSONStorage(() => localStorage), // (optional) by default, 'localStorage' is used
-      onRehydrateStorage: () => (state) => {
-          if (state) {
-            // Ensure default customer exists after loading
-            if (!state.customers.find(c => c.id === 'WALK_IN')) {
-                state.customers.push({
+      name: 'smp-ai-storage-v3',
+      storage: createJSONStorage(() => localStorage),
+      onRehydrateStorage: (state) => (rehydratedState) => {
+          if (rehydratedState) {
+            // Force re-inject the mandatory guest customer if missing
+            const hasWalkIn = rehydratedState.customers.some(c => c.id === 'WALK_IN');
+            if (!hasWalkIn) {
+                rehydratedState.customers = [{
                     id: 'WALK_IN', name: 'Walk-in / Guest', notes: 'Anonymous interactions.', tags: ['GUEST'],
                     microSignals: [], totalSpent: 0, lastPurchase: new Date().toISOString(),
                     transactionHistory: [], xp: 0, level: 1, prestige: 0, achievements: [], gallery: [], equippedPerks: []
-                });
+                }, ...rehydratedState.customers];
             }
-            // Set inventory terms based on loaded settings
-            state.inventoryTerms = getInventoryTerms(state.settings.inventoryType);
+            
+            // Re-attach mission logic and sync with source data
+            const missionsWithLogic = missionsData.map(sourceMission => {
+                const storedMission = rehydratedState.missions?.find((m: Mission) => m.id === sourceMission.id);
+                if (storedMission) {
+                    // Keep progress from storage, but use latest static data and function from source
+                    return {
+                        ...sourceMission,
+                        progress: storedMission.progress,
+                        isComplete: storedMission.isComplete,
+                        isClaimed: storedMission.isClaimed,
+                    };
+                }
+                return sourceMission; // New mission from source data
+            });
+            rehydratedState.missions = missionsWithLogic;
+
+            // Sync UI terms immediately
+            rehydratedState.inventoryTerms = getInventoryTerms(rehydratedState.settings.inventoryType);
+            // Reset initialization flag to trigger fresh session boot
+            rehydratedState.isInitialized = false;
           }
       }
     }
